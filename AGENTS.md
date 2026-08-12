@@ -101,7 +101,7 @@ correct for many independent single-device tasks. `SimpleLauncher` should be
 considered the default. If you think they might want `MpiExecLauncher` you should check
 with them.
 
-Starting it may need a Globus login in a browser; hand that to them. Then read the UUID
+Starting it may need a Globus login in a browser; walk them through it. Then read the UUID
 back with `globus-compute-endpoint list`.
 
 ### 7. Record their access
@@ -143,8 +143,8 @@ Tell them what the stopping conditions are set to, and how to watch and stop it 
 
 ## Steps that need them at the keyboard
 
-A few things you cannot do for them — a password, an MFA passcode, a browser login. Walk
-them through those: say exactly what to do, wait, and pick it up from there.
+A few steps need them at the keyboard — a password, an MFA passcode, a browser login.
+Say exactly what to do, wait for them, and pick it up from there.
 
 - **Logging in to the compute system.** Most facilities require a one-time passcode per
   login. Check whether you already have a usable session:
@@ -188,8 +188,7 @@ Done once by whoever hosts it. Walk them through each of these — say what to c
 wait, carry on:
 
 1. Create a Slack app in the workspace. Most workspaces require a Slack admin to
-   approve it — request that as part of this step rather than expecting it in advance,
-   and expect to wait.
+   approve it. They request that through the app setup process.
 2. Add an incoming webhook. Its URL goes in `~/.slack_webhook` and is what members
    receive when they join.
 3. Create a bot token with `channels:history`, in `~/.slack_bot_token`. Inbound only —
