@@ -117,7 +117,7 @@ their agreement, run one. Preflight checks the task contract, endpoint status an
 workspace writability, so most misconfigurations fail with a message before anything is
 submitted.
 
-### 9. Slack, if they want it
+### 9. Slack (optional)
 
 The campaign posts status, milestones and alerts as it goes, and they can message it
 back to steer it mid-run.
@@ -125,7 +125,8 @@ back to steer it mid-run.
 Ask whether they are joining an existing lab or setting one up — joining needs only the
 channel and its webhook URL. Setting one up means creating a Slack app, which in most
 workspaces a Slack admin has to approve; requesting that approval is part of the setup,
-so they do not need it arranged beforehand. The `Slack` section below has both.
+so they do not need it arranged beforehand. The `Slack` section below has both, and
+`docs/slack.md` explains how the pieces fit together.
 
 It can also be added later, if they would rather set it up another time.
 
