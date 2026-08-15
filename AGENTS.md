@@ -159,8 +159,8 @@ Say exactly what to do, wait for them, and pick it up from there.
   configured their session is reusable, and your later commands work without
   re-authenticating.
 - **Globus login**, the first time the endpoint starts.
-- **Globus Transfer endpoint activation**, if they sync a workspace across machines with
-  `framework/sync_shared.sh`.
+- **Globus Transfer endpoint activation**, if they sync a workspace across machines —
+  see `docs/globus_transfer.md`.
 - **Slack app setup**, if they want it.
 
 At each of these, give them the exact command or the exact page, and carry on when

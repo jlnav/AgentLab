@@ -2,6 +2,8 @@
 
 *A research lab run by agents.*
 
+**[Presentation →](https://github.com/shuds13/agentlab_slides/blob/main/agentlab.pdf)**
+
 An experimental lab for persistent agent tasks that submit work to HPC systems.
 
 Built on the same machinery as
