@@ -1,0 +1,22 @@
+{
+  "_comment": "Facts about NERSC Perlmutter that are the same for everyone. Credentials and allocations go in users/<you>/perlmutter.json; what to run goes in the campaign.",
+
+  "ppn": 4,
+  "max_concurrent": 1,
+
+  "target": {
+    "env": {
+      "TMPDIR": "/tmp"
+    }
+  },
+
+  "bucket_defaults": {
+    "qos": "debug",
+    "constraint": "gpu",
+    "num_nodes": 1,
+    "walltime": "00:30:00",
+    "init_blocks": 0,
+    "min_blocks": 0,
+    "max_blocks": 1
+  }
+}

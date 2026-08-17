@@ -7,7 +7,11 @@ the closer one and edit the marked lines.
 |---|---|---|---|
 | `aurora_pbs/` | PBS Pro | SimpleLauncher | ALCF Aurora |
 | `polaris_pbs/` | PBS Pro | SimpleLauncher | ALCF Polaris |
+| `perlmutter_slurm/` | Slurm | SimpleLauncher | NERSC Perlmutter GPU nodes |
 | `slurm/` | Slurm | SimpleLauncher | CPU nodes; GPU variant noted in the file |
+
+Perlmutter has its own file because NERSC selects nodes by `constraint` and the queue
+by `qos`, where the generic Slurm template uses `partition`.
 
 `SimpleLauncher` gives one worker per allocation, and the job's own launcher spans the
 nodes. For many independent single-device tasks, use `MpiExecLauncher` with
