@@ -26,14 +26,18 @@ from claude_agent_sdk import (
     AssistantMessage,
     ResultMessage,
 )
-import tools
-from tools import create_server, shutdown_executor
-
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+# Resolved and exported BEFORE importing tools: tools.py reads WORKSPACE_DIR at import
+# time and falls back to its own directory, which puts claims.jsonl, jobs.jsonl and
+# ANNOUNCEMENTS.md in framework/ instead of the campaign's workspace.
 WORKSPACE_DIR = os.environ.get("WORKSPACE_DIR") or (
     os.path.join(os.path.abspath(os.environ.get("LAB_DIR",
         os.path.join(SCRIPT_DIR, ".."))), "workspace", os.environ["CAMPAIGN"])
     if os.environ.get("CAMPAIGN") else SCRIPT_DIR)
+os.environ["WORKSPACE_DIR"] = WORKSPACE_DIR
+
+import tools  # noqa: E402
+from tools import create_server, shutdown_executor  # noqa: E402
 # Campaign files (prompt.md, user prompt) live with the campaign, not the framework.
 LAB_DIR = os.path.abspath(os.environ.get("LAB_DIR", os.path.join(SCRIPT_DIR, "..")))
 CAMPAIGN = os.environ.get("CAMPAIGN", "")
