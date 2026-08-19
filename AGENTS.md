@@ -60,6 +60,13 @@ shipped to the worker by source, so every import goes inside its body and paths 
 through `args` and `target`. Expose more parameters than seem needed — a campaign can
 only explore what its schema allows.
 
+If they gave you results from earlier work, ask whether those measure the same quantity,
+the same way, as a job here. If they do, seed the workspace with them —
+`workspace/<name>/results.jsonl`, and `LOGBOOK.md` for the conclusions — marking the
+entries as coming from that earlier work. The agent then finds them where it already
+looks before every submit, rather than only when a prompt names the file. If they measure
+something else, they stay a reference document and `prompt.md` says what they are for.
+
 Then the stopping conditions, which go in `run.sh`: There are safeguards in place in
 case to stop the agent if it has not met the users goal such as total tasks or campaign
 wallclock. `docs/settings.md` has every setting. If their files already indicate these,
