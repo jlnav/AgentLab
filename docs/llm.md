@@ -45,9 +45,13 @@ Then pin FastAPI down, as a separate step:
 
 The two steps cannot be combined: asking for both at once makes the resolver satisfy
 the FastAPI pin by choosing a years-old LiteLLM instead. Installed in this order,
-LiteLLM stays current and FastAPI is downgraded afterwards. The pin is needed because
-LiteLLM 1.97.0 imports `get_flat_dependant`, which later FastAPI releases removed; the
-proxy fails at import without it. Check whether a newer LiteLLM has dropped that import
+LiteLLM stays current and FastAPI is downgraded afterwards.
+
+The pin is needed because LiteLLM 1.97.0 imports `get_flat_dependant`, which later
+FastAPI releases removed, and `litellm[proxy]` installs one of those releases. Without
+the pin the proxy fails to start, reporting either that import or
+`ModuleNotFoundError: No module named 'proxy_server'` depending on how it is launched.
+Both come from the same cause. Check whether a newer LiteLLM has dropped the import
 before carrying the pin forward.
 
 Write a config naming the upstream model, its endpoint, and the key to reach it:
@@ -71,11 +75,8 @@ and a backend that implements only `/v1/chat/completions` answers 404.
 Start the proxy:
 
 ```
-CONFIG_FILE_PATH=$PWD/config.yaml ~/venvs/litellm/bin/python -m uvicorn litellm.proxy.proxy_server:app --host 0.0.0.0 --port 4000
+~/venvs/litellm/bin/litellm --config config.yaml --port 4000
 ```
-
-The `litellm` console script fails with `ModuleNotFoundError: proxy_server` in some
-releases; starting the ASGI app directly, as above, works either way.
 
 Check it before pointing the agent at it:
 
