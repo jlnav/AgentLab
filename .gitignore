@@ -13,3 +13,6 @@ __pycache__/
 *.orig
 .venv/
 venv/
+
+# Local scratch: proxy configs, venvs, probes.
+scratch/

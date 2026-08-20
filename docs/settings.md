@@ -45,6 +45,7 @@ Less often changed.
 | `CAMPAIGN_DIR` | `campaigns/<campaign>` | where the campaign's files are |
 | `TASK_DIR` | the campaign directory | where `task.py` is found |
 | `TASK_MODULE` | task | module name within `TASK_DIR` |
+| `CLAUDE_CONFIG_DIR` | `~/.claude` | directory holding the Claude Code `settings.json` that decides which LLM the agent uses. `docs/llm.md` |
 | `CLAIM_STALE_SECONDS` | 21600 | before an unfinished claim can be taken over |
 | `ANNOUNCE_POLL` | 2 | seconds between announcement-board checks while waiting |
 

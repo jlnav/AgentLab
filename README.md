@@ -52,6 +52,9 @@ you already have files — a script, a prompt, notes. From that it creates
 `campaigns/<your-name>/`, writes the four files a campaign needs, records your access in
 `users/<you>/`, and walks you through the Globus Compute endpoint.
 
+The agent uses whichever LLM your Claude Code settings point at. `docs/llm.md` covers
+running against a facility gateway, or against a non-Claude model through LiteLLM.
+
 If you would rather set it up by hand, `docs/setup.md` covers the same ground and
 `campaigns/example-vllm-inference-opt/README.md` describes what a campaign directory
 holds.
