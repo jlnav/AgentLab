@@ -20,13 +20,8 @@ import sys
 import time
 from datetime import datetime
 
-from claude_agent_sdk import (
-    ClaudeSDKClient,
-    ClaudeAgentOptions,
-    AssistantMessage,
-    ResultMessage,
-)
 import tools
+from provider import OpenAICompatibleSession, local_tool_functions, local_tool_specs
 from tools import create_server, shutdown_executor
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -60,8 +55,9 @@ MAX_FINALIZE_ROUNDS = 2
 # have finished; then agent.py waits Python-side (off the event loop) for the next
 # job to complete and nudges the same conversation onward. Remote jobs keep
 # running and are never cancelled by a turn ending.
+_COMPLETED_TOOL = "get_local_completed" if tools.IS_LOCAL_SYSTEM else "get_completed_jobs"
 CONTINUE_PROMPT = (
-    "One or more jobs have finished. Collect them with get_completed_jobs, "
+    f"One or more jobs have finished. Collect them with {_COMPLETED_TOOL}, "
     "fit and log each, then continue exploring: pick the next promising region "
     "from your results and submit it. A good result means probe nearby, not stop."
 )
@@ -133,8 +129,7 @@ def _fmt_uptime(secs):
 
 
 async def _context_usage(client):
-    """Best-effort /context data (model, tokens, window, pct) via the SDK method that
-    backs the CLI /context command. Returns the dict or None on failure."""
+    """Best-effort provider usage data."""
     try:
         return await client.get_context_usage()
     except Exception as e:
@@ -261,6 +256,8 @@ def _start_run_dir():
                 started_at=datetime.now().isoformat(timespec="seconds"),
                 user_prompt_file=USER_PROMPT_FILE,
                 campaign=CAMPAIGN,
+                provider=tools.AGENT_CONFIG["provider"],
+                model=tools.AGENT_CONFIG.get("model"),
                 shared_dir=WORKSPACE_DIR, log=LOG_PATH, status="running")
     _heartbeat()
     print(f"Run dir: {RUN_DIR}", flush=True)
@@ -297,27 +294,33 @@ def preflight():
             problems.append(f"task preflight() raised: {e}")
     if not os.path.isdir(WORKSPACE_DIR):
         problems.append(f"WORKSPACE_DIR does not exist: {WORKSPACE_DIR}")
+    if tools.AGENT_CONFIG["provider"] == "openai":
+        key_env = tools.AGENT_CONFIG["api_key_env"]
+        if key_env and not os.environ.get(key_env) and not tools.AGENT_CONFIG.get("base_url"):
+            problems.append(f"OpenAI provider needs {key_env} to be set")
     system_md = os.path.join(SCRIPT_DIR, "SYSTEM.md")
     if not os.path.isfile(system_md):
         problems.append(f"SYSTEM.md missing: {system_md} (system-details prompt loaded into the agent)")
     # Fail fast if the Globus Compute endpoint is not online -- otherwise every
-    # submit fails with ENDPOINT_NOT_ONLINE and the run does nothing.
-    try:
-        import globus_compute_sdk as _gc
-        _c = _gc.Client()
-        _st = _c.get_endpoint_status(tools.ENDPOINT_ID).get("status")
-        if _st != "online":
-            try:
-                _nm = _c.get_endpoint_metadata(tools.ENDPOINT_ID).get("name") or tools.ENDPOINT_ID
-            except Exception:
-                _nm = tools.ENDPOINT_ID
-            slack_notify(f":rotating_light: Agent exiting -- {SYSTEM} ({ROLE}): Globus Compute "
-                         f"endpoint '{_nm}' is not online (status={_st}). Start it: "
-                         f"globus-compute-endpoint start {_nm} --detach")
-            problems.append(f"Globus Compute endpoint '{_nm}' ({tools.ENDPOINT_ID}) is not online "
-                            f"(status={_st}); start it: globus-compute-endpoint start {_nm} --detach")
-    except Exception as e:
-        print(f"[preflight] WARNING: could not query endpoint status ({tools.ENDPOINT_ID}): {e}", flush=True)
+    # submit fails with ENDPOINT_NOT_ONLINE and the run does nothing. Skipped for
+    # local-only systems that don't use Globus Compute.
+    if not tools.IS_LOCAL_SYSTEM:
+        try:
+            import globus_compute_sdk as _gc
+            _c = _gc.Client()
+            _st = _c.get_endpoint_status(tools.ENDPOINT_ID).get("status")
+            if _st != "online":
+                try:
+                    _nm = _c.get_endpoint_metadata(tools.ENDPOINT_ID).get("name") or tools.ENDPOINT_ID
+                except Exception:
+                    _nm = tools.ENDPOINT_ID
+                slack_notify(f":rotating_light: Agent exiting -- {SYSTEM} ({ROLE}): Globus Compute "
+                             f"endpoint '{_nm}' is not online (status={_st}). Start it: "
+                             f"globus-compute-endpoint start {_nm} --detach")
+                problems.append(f"Globus Compute endpoint '{_nm}' ({tools.ENDPOINT_ID}) is not online "
+                                f"(status={_st}); start it: globus-compute-endpoint start {_nm} --detach")
+        except Exception as e:
+            print(f"[preflight] WARNING: could not query endpoint status ({tools.ENDPOINT_ID}): {e}", flush=True)
     try:
         os.makedirs(WORKSPACE_DIR, exist_ok=True)
         _t = os.path.join(WORKSPACE_DIR, ".preflight_write_test")
@@ -331,41 +334,34 @@ def preflight():
         for pr in problems:
             print(f"  - {pr}", flush=True)
         sys.exit(1)
-    print(f"preflight OK: task={tools.TASK_DIR}, SYSTEM.md, WORKSPACE_DIR, endpoint online.", flush=True)
+    backend = "local worker pool" if tools.IS_LOCAL_SYSTEM else "endpoint online"
+    print(f"preflight OK: task={tools.TASK_DIR}, SYSTEM.md, WORKSPACE_DIR, {backend}.", flush=True)
 
 
 async def drain_turn(client, round_num):
-    """Print the assistant's output for one turn (until its ResultMessage)."""
-    async for message in client.receive_response():
-        if isinstance(message, AssistantMessage):
-            for block in message.content:
-                if hasattr(block, "text"):
-                    print(block.text, flush=True)
-        elif isinstance(message, ResultMessage):
-            print(f"\n[round {round_num} turn end] {message.subtype}", flush=True)
+    """Drain one provider turn and print a uniform turn marker."""
+    if hasattr(client, "drain_turn"):
+        await client.drain_turn(round_num)
+    print(f"\n[round {round_num} turn end]", flush=True)
 
 
 async def main():
     system_prompt = load_prompt()
     system_prompt += "\n\n" + load_system()
     system_prompt += f"\n\n# This agent\nSYSTEM={SYSTEM}  ROLE={ROLE}.\nThe shared files (results.jsonl, LOGBOOK.md, JOURNAL.md, claims.jsonl) live in {WORKSPACE_DIR} \u2014 always read and write them by full path there (e.g. {WORKSPACE_DIR}/results.jsonl). Follow the role rules in the Collaboration section of the prompt."
-    server = create_server()
-
-    options = ClaudeAgentOptions(
-        mcp_servers={"cas": server},
-        # The task plug-in decides which job tools exist (a task with no local
-        # comparator does not get the local pair), so take the list from tools.
-        allowed_tools=tools.tool_names() + [
-            "Read",
-            "Write",
-            "Glob",
-            "Grep",
-            "Bash",
-        ],
-        permission_mode="bypassPermissions",
-        system_prompt=system_prompt,
-        cwd=SCRIPT_DIR,
-    )
+    config = tools.AGENT_CONFIG
+    tool_functions = local_tool_functions(LAB_DIR)
+    if config["provider"] == "openai":
+        tool_specs = local_tool_specs()
+        # The compute tools remain ordinary Python callables; the OpenAI adapter
+        # serializes their existing Claude-shaped results for compatibility.
+        tool_functions.update(tools.openai_tool_functions())
+        session_factory = lambda: OpenAICompatibleSession(
+            config, system_prompt, tool_specs + tools.openai_tool_specs(), tool_functions)
+    else:
+        server = create_server()
+        session_factory = lambda: __import__("provider").ClaudeSession(
+            system_prompt, server, tools.tool_names() + ["Read", "Write", "Glob", "Grep", "Bash"], SCRIPT_DIR)
 
     results_file = os.path.join(WORKSPACE_DIR, "results.jsonl")
     loop = asyncio.get_event_loop()
@@ -403,9 +399,10 @@ async def main():
     beat_task = asyncio.create_task(_heartbeat_loop())
 
     try:
-        async with ClaudeSDKClient(options=options) as client:
-            model = (await _context_usage(client) or {}).get("model") or "?"
-            print(f"Agent started -- {SYSTEM} ({ROLE}) · model {model}", flush=True)
+        async with session_factory() as client:
+            usage = await client.get_context_usage() if hasattr(client, "get_context_usage") else None
+            model = (usage or {}).get("model") or tools.AGENT_CONFIG.get("model") or "?"
+            print(f"Agent started -- {SYSTEM} ({ROLE}) · provider {tools.AGENT_CONFIG['provider']} · model {model}", flush=True)
             _write_meta(model=model)
             if NOTIFY_START:
                 slack_notify(f":rocket: Agent started — {SYSTEM} ({ROLE}) · {model}.")

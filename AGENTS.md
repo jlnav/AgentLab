@@ -9,7 +9,7 @@ Open with what they will need:
 
 - A prompt — what they want the agent to do.
 - A machine they can run on, and an account to charge.
-- The Claude Agent SDK, and access to an LLM service it can use.
+- The Claude Agent SDK, or the `openai` package plus an OpenAI-compatible LLM service for campaigns configured with `agent.provider: openai`.
 - Any files they already have — a script, notes, previous results.
 
 Then step 1, in the same message.
@@ -49,7 +49,7 @@ it stands:
 | `prompt.md` | their prompt |
 | `user_prompt.md` | what to do first |
 | `task.py` | how one job runs, what it returns, what the agent is told about it |
-| `campaign.json` | which system, and any parameters for it |
+| `campaign.json` | which system, optional agent provider/model settings, and any parameters for it |
 | `run.sh` | settings and launch |
 
 `campaigns/example-vllm-inference-opt/` has all five to copy the shape from, and its
@@ -64,6 +64,12 @@ Then the stopping conditions, which go in `run.sh`: There are safeguards in plac
 case to stop the agent if it has not met the users goal such as total tasks or campaign
 wallclock. `docs/settings.md` has every setting. If their files already indicate these,
 use that and tell them what you set. Otherwise ask, and offer the defaults.
+
+Ask which agent backend to use before writing `campaign.json`: Claude is the default,
+but confirm that Claude is acceptable or ask whether they prefer an OpenAI-compatible
+backend/service. For Claude, confirm the Claude Agent SDK and authentication are
+available. For OpenAI-compatible backends, collect the model, service base URL, and
+API-key environment variable, then record them under `agent` in `campaign.json`.
 
 ### 5. The machine
 

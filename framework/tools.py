@@ -22,8 +22,23 @@ import traceback
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor
 from concurrent.futures import wait as _futures_wait
 
-from claude_agent_sdk import tool, create_sdk_mcp_server
+try:
+    from claude_agent_sdk import tool, create_sdk_mcp_server
+except ImportError:
+    create_sdk_mcp_server = None
+
+    def tool(name, description, schema):
+        """Keep framework functions importable for OpenAI-only installations."""
+        def decorate(function):
+            function.tool_name = name
+            function.tool_description = description
+            function.tool_schema = schema
+            return function
+        return decorate
+
 from globus_compute_sdk import Executor
+
+from model_config import normalize_schema, resolve_agent_config
 from globus_compute_sdk.serialize import ComputeSerializer, AllCodeStrategies
 
 ROLE = os.environ.get("ROLE", "both")          # free-form; the prompt defines what roles mean
@@ -60,14 +75,23 @@ _CAMPAIGN_DIR = os.path.join(LAB_DIR, "campaigns", CAMPAIGN)
 _cam = _read_json(os.path.join(_CAMPAIGN_DIR, "campaign.json"),
                   f"campaign '{CAMPAIGN}'", needs=("system",))
 SYSTEM = _cam["system"]
+AGENT_CONFIG = resolve_agent_config(_cam)
 
 _sys_cfg = _read_json(os.path.join(LAB_DIR, "systems", f"{SYSTEM}.json"),
                       f"system '{SYSTEM}'")
-_usr = _read_json(os.path.join(LAB_DIR, "users", USER_NAME, f"{SYSTEM}.json"),
-                  f"your access to '{SYSTEM}'",
-                  needs=("endpoint", "account", "work_dir"))
+IS_LOCAL_SYSTEM = bool(_sys_cfg.get("local", False))
+_user_path = os.path.join(LAB_DIR, "users", USER_NAME, f"{SYSTEM}.json")
+if IS_LOCAL_SYSTEM:
+    # Local campaigns do not need a Globus endpoint or per-user setup. A user file
+    # may still override work_dir, but the campaign workspace is the safe default.
+    _usr = (_read_json(_user_path, f"your access to '{SYSTEM}'")
+            if os.path.isfile(_user_path) else {})
+    _usr.setdefault("work_dir", os.path.join(LAB_DIR, "workspace", CAMPAIGN))
+else:
+    _usr = _read_json(_user_path, f"your access to '{SYSTEM}'",
+                      needs=("endpoint", "account", "work_dir"))
 
-ENDPOINT_ID = _usr["endpoint"]
+ENDPOINT_ID = _usr.get("endpoint", "") if IS_LOCAL_SYSTEM else _usr["endpoint"]
 MAX_CONCURRENT = int(_sys_cfg.get("max_concurrent", 1))   # remote jobs running/queued at once
 
 # Named resource shapes on one system (e.g. a small quick queue and a large long one).
@@ -75,7 +99,7 @@ MAX_CONCURRENT = int(_sys_cfg.get("max_concurrent", 1))   # remote jobs running/
 _bucket_defaults = dict(_sys_cfg.get("bucket_defaults", {}))
 _bucket_defaults.update(_cam.get("resources", {}))    # campaign: queue, walltime, nodes
 _bucket_defaults.update(_usr.get("resources", {}))    # user: anything they must override
-_bucket_defaults["account"] = _usr["account"]
+_bucket_defaults["account"] = _usr.get("account", "")
 _SYS = {"buckets": {"default": {"num_nodes": _bucket_defaults.get("num_nodes", 1),
                                 "user_config": _bucket_defaults}}}
 _default_bucket = "default"
@@ -275,12 +299,12 @@ def stop_is_requested():
 
 
 def submit_count():
-    """Remote jobs submitted this process (this is what MAX_SUBMITS caps)."""
-    return _submit_count
+    """Jobs submitted this process under the active system's execution mode."""
+    return _local_submit_count if IS_LOCAL_SYSTEM else _submit_count
 
 
 def local_submit_count():
-    """Local jobs submitted this process (observability only -- no cap)."""
+    """Local jobs submitted this process."""
     return _local_submit_count
 
 
@@ -378,7 +402,7 @@ _WINDDOWN_REFUSAL = ("submit refused: this run is winding down. Collect and log 
                      "already in flight, but do not submit anything new.")
 
 
-@tool("submit_job", task.JOB_DESC, task.JOB_SCHEMA)
+@tool("submit_job", task.JOB_DESC, normalize_schema(task.JOB_SCHEMA))
 async def submit_job(args):
     """Fire one remote job and return immediately with a job_id."""
     global _submit_count
@@ -464,12 +488,16 @@ async def get_completed_jobs(args):
             json.dumps({"completed": completed, "pending": pending}, indent=2, default=str)}]}
 
 
-@tool("submit_local", getattr(task, "LOCAL_DESC", ""), getattr(task, "LOCAL_SCHEMA", {}))
+@tool("submit_local", getattr(task, "LOCAL_DESC", ""), normalize_schema(getattr(task, "LOCAL_SCHEMA", {})))
 async def submit_local(args):
     """Fire the local comparator and return immediately with a job_id."""
     global _local_submit_count
     if _stop_requested:
         return {"content": [{"type": "text", "text": _WINDDOWN_REFUSAL}], "is_error": True}
+    if _local_submit_count >= MAX_SUBMITS:
+        return {"content": [{"type": "text", "text":
+                f"submit refused: hit CAS_MAX_SUBMITS={MAX_SUBMITS} total-jobs cap for this run"}],
+                "is_error": True}
     if _local_pending_count() >= LOCAL_MAX_CONCURRENT:
         return {"content": [{"type": "text", "text":
                 f"submit refused: a local job is already running (max {LOCAL_MAX_CONCURRENT} "
@@ -516,7 +544,7 @@ RELEASE_CLAIM_DESC = (
 )
 
 
-@tool("release_claim", RELEASE_CLAIM_DESC, {"key": str})
+@tool("release_claim", RELEASE_CLAIM_DESC, normalize_schema({"key": str}))
 async def release_claim(args):
     _release_claim(args["key"])
     return {"content": [{"type": "text", "text": f"released claim on {args['key']}"}]}
@@ -533,7 +561,7 @@ NOTIFY_DESC = (
 )
 
 
-@tool("notify", NOTIFY_DESC, {"message": str, "blocking": bool})
+@tool("notify", NOTIFY_DESC, normalize_schema({"message": str, "blocking": bool}))
 async def notify(args):
     global _problem_since
     blocking = bool(args.get("blocking", False))
@@ -584,15 +612,79 @@ async def check_backend(args):
 def create_server():
     """MCP server exposing the tools. The local pair is only offered when the task
     defines a local comparator."""
-    tools = [submit_job, get_completed_jobs, release_claim, notify, check_backend]
-    if HAS_LOCAL:
-        tools[2:2] = [submit_local, get_local_completed]
+    if create_sdk_mcp_server is None:
+        raise RuntimeError("Claude SDK is required for the Claude agent provider")
+    if IS_LOCAL_SYSTEM:
+        # Local-only: no remote job submission or backend checking needed.
+        tools = [notify] if HAS_LOCAL else []
+        if HAS_LOCAL:
+            tools[0:0] = [submit_local, get_local_completed]
+    else:
+        tools = [submit_job, get_completed_jobs, release_claim, notify, check_backend]
+        if HAS_LOCAL:
+            tools[2:2] = [submit_local, get_local_completed]
     return create_sdk_mcp_server(name="cas", version="1.0.0", tools=tools)
 
 
 def tool_names():
     """Fully-qualified names for ClaudeAgentOptions(allowed_tools=...)."""
-    names = ["submit_job", "get_completed_jobs", "release_claim", "notify", "check_backend"]
-    if HAS_LOCAL:
-        names += ["submit_local", "get_local_completed"]
+    if IS_LOCAL_SYSTEM:
+        names = ["notify"]
+        if HAS_LOCAL:
+            names = ["submit_local", "get_local_completed", "notify"]
+    else:
+        names = ["submit_job", "get_completed_jobs", "release_claim", "notify", "check_backend"]
+        if HAS_LOCAL:
+            names += ["submit_local", "get_local_completed"]
     return [f"mcp__cas__{n}" for n in names]
+
+
+def openai_tool_specs():
+    """OpenAI function-tool definitions for the framework tools."""
+    if IS_LOCAL_SYSTEM:
+        specs = []
+        if HAS_LOCAL:
+            specs = [
+                {"type": "function", "function": {"name": "submit_local", "description": getattr(task, "LOCAL_DESC", ""),
+                 "parameters": normalize_schema(getattr(task, "LOCAL_SCHEMA", {}))}},
+                {"type": "function", "function": {"name": "get_local_completed", "description": GET_LOCAL_DESC,
+                 "parameters": {"type": "object", "properties": {}}}},
+                {"type": "function", "function": {"name": "notify", "description": NOTIFY_DESC,
+                 "parameters": normalize_schema({"message": str, "blocking": bool})}},
+            ]
+        return specs
+    specs = [
+        {"type": "function", "function": {"name": "submit_job", "description": task.JOB_DESC,
+         "parameters": normalize_schema(task.JOB_SCHEMA)}},
+        {"type": "function", "function": {"name": "get_completed_jobs", "description": GET_COMPLETED_DESC,
+         "parameters": {"type": "object", "properties": {}}}},
+        {"type": "function", "function": {"name": "release_claim", "description": RELEASE_CLAIM_DESC,
+         "parameters": normalize_schema({"key": str})}},
+        {"type": "function", "function": {"name": "notify", "description": NOTIFY_DESC,
+         "parameters": normalize_schema({"message": str, "blocking": bool})}},
+        {"type": "function", "function": {"name": "check_backend", "description": CHECK_BACKEND_DESC,
+         "parameters": {"type": "object", "properties": {}}}},
+    ]
+    if HAS_LOCAL:
+        specs += [
+            {"type": "function", "function": {"name": "submit_local", "description": getattr(task, "LOCAL_DESC", ""),
+             "parameters": normalize_schema(getattr(task, "LOCAL_SCHEMA", {}))}},
+            {"type": "function", "function": {"name": "get_local_completed", "description": GET_LOCAL_DESC,
+             "parameters": {"type": "object", "properties": {}}}},
+        ]
+    return specs
+
+
+def _unwrap(fn):
+    """Extract the underlying async function from an SdkMcpTool (if decorated)."""
+    return getattr(fn, "handler", fn)
+
+
+def openai_tool_functions():
+    """Map OpenAI function names to the existing framework implementations."""
+    result = {"submit_job": _unwrap(submit_job), "get_completed_jobs": _unwrap(get_completed_jobs),
+              "release_claim": _unwrap(release_claim), "notify": _unwrap(notify),
+              "check_backend": _unwrap(check_backend)}
+    if HAS_LOCAL:
+        result.update({"submit_local": _unwrap(submit_local), "get_local_completed": _unwrap(get_local_completed)})
+    return result
