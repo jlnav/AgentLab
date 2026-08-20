@@ -30,29 +30,20 @@ SDK's, unchanged.
 format and routes it to any provider it supports. Running it in front of an
 OpenAI-style backend lets a campaign run on that backend through the same SDK path.
 
-Install it in its own environment. Its proxy extra pulls in a large dependency set,
-including versions that a general working environment is unlikely to match:
+Install it in its own environment, since its proxy extra pulls in a large dependency
+set:
 
 ```
-python -m venv ~/venvs/litellm && ~/venvs/litellm/bin/pip install "litellm[proxy]"
+python -m venv ~/venvs/litellm && ~/venvs/litellm/bin/pip install "litellm[proxy]" "fastapi<0.140.7"
 ```
 
-Then pin FastAPI down, as a separate step:
-
-```
-~/venvs/litellm/bin/pip install "fastapi==0.118.0"
-```
-
-The two steps cannot be combined: asking for both at once makes the resolver satisfy
-the FastAPI pin by choosing a years-old LiteLLM instead. Installed in this order,
-LiteLLM stays current and FastAPI is downgraded afterwards.
-
-The pin is needed because LiteLLM 1.97.0 imports `get_flat_dependant`, which later
-FastAPI releases removed, and `litellm[proxy]` installs one of those releases. Without
-the pin the proxy fails to start, reporting either that import or
-`ModuleNotFoundError: No module named 'proxy_server'` depending on how it is launched.
-Both come from the same cause. Check whether a newer LiteLLM has dropped the import
-before carrying the pin forward.
+The FastAPI cap is needed as of LiteLLM 1.97.0. LiteLLM imports
+`fastapi.dependencies.utils.get_flat_dependant`, which FastAPI removed in 0.140.7, and
+LiteLLM declares `fastapi>=0.136.3,<1.0` — no upper bound below the removal — so an
+uncapped install takes a FastAPI the proxy cannot import. The working range is 0.136.3
+to 0.140.6. Drop the cap once a LiteLLM release no longer needs it; keep it inside that
+range rather than pinning further back, since below 0.136.3 is outside what LiteLLM
+supports.
 
 Write a config naming the upstream model, its endpoint, and the key to reach it:
 
@@ -96,6 +87,49 @@ Then point the settings at the proxy:
 LiteLLM passes the caller's credential upstream, so `ANTHROPIC_API_KEY` has to be one
 the backend accepts, not an arbitrary string. Where the backend authenticates by
 username, that username is the value.
+
+## Offering several models from one proxy
+
+One proxy can front several models, so the people running campaigns choose one by name
+and install nothing. Give each an entry:
+
+```yaml
+model_list:
+  - model_name: gpt
+    litellm_params:
+      model: openai/<gpt-model-name>
+      api_base: https://gateway.example/v1
+      api_key: os.environ/GATEWAY_KEY
+  - model_name: gemini
+    litellm_params:
+      model: openai/<gemini-model-name>
+      api_base: https://gateway.example/v1
+      api_key: os.environ/GATEWAY_KEY
+
+litellm_settings:
+  use_chat_completions_url_for_anthropic_messages: true
+```
+
+Where a gateway serves several vendors' models on one OpenAI-compatible endpoint, every
+entry uses the `openai/` handler regardless of who made the model — the handler names
+the wire format, not the vendor. Reserve `gemini/` and `anthropic/` for going to those
+vendors directly.
+
+Each person then names the model they want:
+
+```json
+{"env": {"ANTHROPIC_BASE_URL": "http://<proxy-host>:4000", "ANTHROPIC_API_KEY": "<their key>"}, "model": "gemini"}
+```
+
+LiteLLM passes the caller's credential upstream rather than substituting the one in the
+config, so each person's own key reaches the backend and usage is attributed to them.
+That also means the proxy should only be reachable from where those credentials are
+already trusted.
+
+Mixing an Anthropic-native upstream into the same config is untested here.
+`use_chat_completions_url_for_anthropic_messages` applies proxy-wide, so a Claude model
+reached through its native `/v1/messages` may need its own proxy, or a check that the
+setting does not disturb it.
 
 ## A different model for one campaign
 
