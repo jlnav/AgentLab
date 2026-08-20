@@ -55,10 +55,20 @@ it stands:
 `campaigns/example-vllm-inference-opt/` has all five to copy the shape from, and its
 README says more about each.
 
-`task.py` defines `JOB_DESC`, `JOB_SCHEMA`, `job_key` and `remote_fn`. `remote_fn` is
-shipped to the worker by source, so every import goes inside its body and paths reach it
-through `args` and `target`. Expose more parameters than seem needed — a campaign can
-only explore what its schema allows.
+`task.py` defines a job in one of two places, and may define both:
+
+| | |
+|---|---|
+| remote | `JOB_DESC`, `JOB_SCHEMA`, `job_key`, `remote_fn` — runs on the system through Globus Compute |
+| local | `LOCAL_DESC`, `LOCAL_SCHEMA`, `local_fn` — runs on the machine the agent is on |
+
+Whichever set is present is what the agent gets tools for. `remote_fn` is shipped to the
+worker by source, so every import goes inside its body and paths reach it through `args`
+and `target`; `local_fn` takes `args` alone and is called in-process. Expose more
+parameters than seem needed — a campaign can only explore what its schema allows.
+
+A task with `local_fn` and no `remote_fn` needs no endpoint, no account and no
+`users/<you>/<system>.json`, so steps 6 and 7 below do not apply to it.
 
 If they gave you results from earlier work, ask whether those measure the same quantity,
 the same way, as a job here. If they do, seed the workspace with them —

@@ -84,9 +84,12 @@ Copy `campaigns/example-vllm-inference-opt/` and replace four files:
 | `task.py` | how one job runs, what it returns, and what the agent is told about it |
 | `campaign.json` | which system, and any parameters for it |
 
-`task.py` defines four names the framework imports — `JOB_DESC`, `JOB_SCHEMA`,
-`job_key`, `remote_fn`. `remote_fn` is sent to the worker by source, so everything it
-needs must be imported inside it or passed in through its arguments.
+`task.py` defines the job. For work that runs on the system: `JOB_DESC`, `JOB_SCHEMA`,
+`job_key`, `remote_fn` — `remote_fn` is sent to the worker by source, so everything it
+needs must be imported inside it or passed in through its arguments. For work that runs
+on the machine the agent is on: `LOCAL_DESC`, `LOCAL_SCHEMA`, `local_fn`. A task may
+define both, and the agent is given tools for whichever it defines. A task with only
+`local_fn` needs no Globus Compute endpoint.
 
 Nothing in `framework/` changes.
 

@@ -63,11 +63,35 @@ SYSTEM = _cam["system"]
 
 _sys_cfg = _read_json(os.path.join(LAB_DIR, "systems", f"{SYSTEM}.json"),
                       f"system '{SYSTEM}'")
-_usr = _read_json(os.path.join(LAB_DIR, "users", USER_NAME, f"{SYSTEM}.json"),
-                  f"your access to '{SYSTEM}'",
-                  needs=("endpoint", "account", "work_dir"))
 
-ENDPOINT_ID = _usr["endpoint"]
+# --- the task plug-in ----------------------------------------------------------
+# Supplies what a job IS: how it is described to the agent, what arguments it takes,
+# how a piece of work is identified, and the function that runs remotely.
+# See AGENTS.md for the contract.
+#
+# The task is imported from its own directory rather than copied in here, so it can
+# keep support files (scripts, data) beside it and refer to them relative to its own
+# __file__.
+TASK_DIR = os.path.abspath(os.environ.get("TASK_DIR", _CAMPAIGN_DIR))
+if TASK_DIR not in sys.path:
+    sys.path.insert(0, TASK_DIR)
+task = importlib.import_module(os.environ.get("TASK_MODULE", "task"))
+HAS_LOCAL = hasattr(task, "local_fn")
+HAS_REMOTE = hasattr(task, "remote_fn")
+
+# Only remote jobs need a Globus endpoint and an account to charge, so a task that
+# defines local_fn alone runs without either -- and without a user file at all. Its
+# work_dir then defaults to the campaign workspace.
+_user_path = os.path.join(LAB_DIR, "users", USER_NAME, f"{SYSTEM}.json")
+if HAS_REMOTE:
+    _usr = _read_json(_user_path, f"your access to '{SYSTEM}'",
+                      needs=("endpoint", "account", "work_dir"))
+else:
+    _usr = (_read_json(_user_path, f"your access to '{SYSTEM}'")
+            if os.path.isfile(_user_path) else {})
+    _usr.setdefault("work_dir", os.path.join(LAB_DIR, "workspace", CAMPAIGN))
+
+ENDPOINT_ID = _usr.get("endpoint", "")
 MAX_CONCURRENT = int(_sys_cfg.get("max_concurrent", 1))   # remote jobs running/queued at once
 
 # Named resource shapes on one system (e.g. a small quick queue and a large long one).
@@ -75,7 +99,7 @@ MAX_CONCURRENT = int(_sys_cfg.get("max_concurrent", 1))   # remote jobs running/
 _bucket_defaults = dict(_sys_cfg.get("bucket_defaults", {}))
 _bucket_defaults.update(_cam.get("resources", {}))    # campaign: queue, walltime, nodes
 _bucket_defaults.update(_usr.get("resources", {}))    # user: anything they must override
-_bucket_defaults["account"] = _usr["account"]
+_bucket_defaults["account"] = _usr.get("account", "")
 _SYS = {"buckets": {"default": {"num_nodes": _bucket_defaults.get("num_nodes", 1),
                                 "user_config": _bucket_defaults}}}
 _default_bucket = "default"
@@ -91,20 +115,6 @@ TARGET.update(_cam_target)
 TARGET["work_dir"] = _usr["work_dir"]
 TARGET.setdefault("ppn", _sys_cfg.get("ppn", 1))
 TARGET["nranks"] = _SYS["buckets"][_default_bucket].get("num_nodes", 1) * TARGET["ppn"]
-
-# --- the task plug-in ----------------------------------------------------------
-# Supplies what a job IS: how it is described to the agent, what arguments it takes,
-# how a piece of work is identified, and the function that runs remotely.
-# See AGENTS.md for the contract.
-#
-# The task is imported from its own directory rather than copied in here, so it can
-# keep support files (scripts, data) beside it and refer to them relative to its own
-# __file__.
-TASK_DIR = os.path.abspath(os.environ.get("TASK_DIR", _CAMPAIGN_DIR))
-if TASK_DIR not in sys.path:
-    sys.path.insert(0, TASK_DIR)
-task = importlib.import_module(os.environ.get("TASK_MODULE", "task"))
-HAS_LOCAL = hasattr(task, "local_fn")
 
 REMOTE_TIMEOUT = int(os.environ.get("CAS_REMOTE_TIMEOUT", "43200"))   # 12h client-side wait
 LOCAL_TIMEOUT = int(os.environ.get("CAS_LOCAL_TIMEOUT", "14400"))     # 4h
@@ -161,6 +171,8 @@ def backend_trouble():
     if the backend looks dead -- endpoint offline, or ALL in-flight tasks failed/lost --
     else None. A normal long queue is healthy and returns None, so a slow site is never
     false-flagged. Read-only; a transient query error returns None rather than raising."""
+    if not HAS_REMOTE:
+        return None
     import globus_compute_sdk as _gc
     try:
         c = _gc.Client()
@@ -275,8 +287,9 @@ def stop_is_requested():
 
 
 def submit_count():
-    """Remote jobs submitted this process (this is what MAX_SUBMITS caps)."""
-    return _submit_count
+    """Jobs submitted this process that MAX_SUBMITS caps. Remote where the task has
+    remote_fn, else the local jobs -- so a local-only run is bounded the same way."""
+    return _submit_count if HAS_REMOTE else _local_submit_count
 
 
 def local_submit_count():
@@ -378,7 +391,7 @@ _WINDDOWN_REFUSAL = ("submit refused: this run is winding down. Collect and log 
                      "already in flight, but do not submit anything new.")
 
 
-@tool("submit_job", task.JOB_DESC, task.JOB_SCHEMA)
+@tool("submit_job", getattr(task, "JOB_DESC", ""), getattr(task, "JOB_SCHEMA", {}))
 async def submit_job(args):
     """Fire one remote job and return immediately with a job_id."""
     global _submit_count
@@ -470,6 +483,10 @@ async def submit_local(args):
     global _local_submit_count
     if _stop_requested:
         return {"content": [{"type": "text", "text": _WINDDOWN_REFUSAL}], "is_error": True}
+    if not HAS_REMOTE and _local_submit_count >= MAX_SUBMITS:
+        return {"content": [{"type": "text", "text":
+                f"submit refused: hit CAS_MAX_SUBMITS={MAX_SUBMITS} total-jobs cap for this run"}],
+                "is_error": True}
     if _local_pending_count() >= LOCAL_MAX_CONCURRENT:
         return {"content": [{"type": "text", "text":
                 f"submit refused: a local job is already running (max {LOCAL_MAX_CONCURRENT} "
@@ -582,17 +599,27 @@ async def check_backend(args):
 
 
 def create_server():
-    """MCP server exposing the tools. The local pair is only offered when the task
-    defines a local comparator."""
-    tools = [submit_job, get_completed_jobs, release_claim, notify, check_backend]
+    """MCP server exposing the tools. Each pair is only offered when the task defines
+    the matching function -- remote_fn for the remote tools, local_fn for the local."""
+    tools = []
+    if HAS_REMOTE:
+        tools += [submit_job, get_completed_jobs, release_claim]
     if HAS_LOCAL:
-        tools[2:2] = [submit_local, get_local_completed]
+        tools += [submit_local, get_local_completed]
+    tools.append(notify)
+    if HAS_REMOTE:
+        tools.append(check_backend)
     return create_sdk_mcp_server(name="cas", version="1.0.0", tools=tools)
 
 
 def tool_names():
     """Fully-qualified names for ClaudeAgentOptions(allowed_tools=...)."""
-    names = ["submit_job", "get_completed_jobs", "release_claim", "notify", "check_backend"]
+    names = []
+    if HAS_REMOTE:
+        names += ["submit_job", "get_completed_jobs", "release_claim"]
     if HAS_LOCAL:
         names += ["submit_local", "get_local_completed"]
+    names.append("notify")
+    if HAS_REMOTE:
+        names.append("check_backend")
     return [f"mcp__cas__{n}" for n in names]
