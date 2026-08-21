@@ -31,9 +31,9 @@ next.
    is responsible, what the planned jobs will show if it holds, and what result would
    refute it — written before you submit.
 2. **Experiment.** Submit. Vary one thing per job, so a difference is attributable.
-3. **Interpret.** What the data says, and what it rules in or out.
+3. **Interpret.** What the data says.
 
-A refuted hypothesis is a good cycle. Record it as refuted and say what it eliminates.
+A refuted hypothesis is a good cycle.
 
 ## Records
 

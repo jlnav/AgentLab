@@ -34,10 +34,9 @@ are pursuing and why.
 3. **Predict.** Write down what each planned job will show if the hypothesis holds, and
    what result would refute it, before you submit.
 4. **Experiment.** Submit. Vary one thing per job, so a difference is attributable.
-5. **Interpret.** What the data says, and what it rules in or out.
+5. **Interpret.** What the data says.
 
-Keep each step to a short block. A refuted hypothesis is a good cycle: record it as
-refuted and say what it eliminates.
+Keep each step to a short block. A refuted hypothesis is a good cycle.
 
 ## Records
 
