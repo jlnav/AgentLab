@@ -12,6 +12,7 @@ export WORKSPACE_ROOT="$(cd ../workspace && pwd)"   # all campaigns
 export SLACK_CHANNEL="${SLACK_CHANNEL:-}"                             # channel ID to read
 export SLACK_BOT_TOKEN_FILE="${SLACK_BOT_TOKEN_FILE:-$HOME/.slack_bot_token}"
 export SLACK_BOT_NAME="${SLACK_BOT_NAME:-@cas_agent}"                 # plain-text mention fallback
+export SLACK_READ_ALL="${SLACK_READ_ALL:-false}"                      # forward every message, not only mentions
 # 5s, not 30: this poll dominates end-to-end latency, and conversations.history is
 # Slack Tier 3 (50+ req/min), so 12/min leaves plenty of headroom.
 export SLACK_FETCH_POLL="${SLACK_FETCH_POLL:-5}"

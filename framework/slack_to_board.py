@@ -14,8 +14,12 @@ Where a message goes depends on whether the secretary is running:
 That split is why the boards are not the default: a board is a broadcast to whichever
 agent reads it, so a question posted to all of them is answered once per campaign.
 
-Only messages that mention the bot are forwarded. Messages posted BY bots are always
-skipped, so the agents' own Slack posts can never come back round as new instructions.
+Only messages that mention the bot are forwarded, unless SLACK_READ_ALL is set: then
+every human message in the channel goes to the secretary, which decides for itself
+which ones are for it. Read-all needs a reader that can judge, so when the secretary is
+down the mention filter applies as usual rather than putting chatter on every board.
+Messages posted BY bots are always skipped, so the agents' own Slack posts can never
+come back round as new instructions.
 
 State is the timestamp of the last Slack message handled, kept in
 <WORKSPACE_DIR>/run/slack_last_ts. On the very first run it records "now" and forwards
@@ -31,6 +35,7 @@ Env:
     WORKSPACE_ROOT         holds one directory per campaign, plus run/
     SLACK_FETCH_POLL       seconds between checks (default 5)
     SECRETARY_ALIVE_WITHIN heartbeat age that still counts as up (default 60)
+    SLACK_READ_ALL         1/true to forward every message, not only mentions
 """
 
 import json
@@ -58,6 +63,7 @@ TOKEN_FILE = os.environ.get("SLACK_BOT_TOKEN_FILE",
 POLL = int(os.environ.get("SLACK_FETCH_POLL", "5"))
 # Plain-text fallback for a mention typed without Slack autocomplete.
 BOT_NAME = os.environ.get("SLACK_BOT_NAME", "@cas_agent")
+READ_ALL = os.environ.get("SLACK_READ_ALL", "").strip().lower() in ("1", "true", "yes", "on")
 
 
 def slack_get(method, token, **params):
@@ -99,16 +105,21 @@ def forward(messages, me):
     """Deliver agent-directed Slack messages, oldest first: to the secretary if it is
     up, to every campaign board if it is not."""
     lines = []
+    read_all = READ_ALL and secretary_up()
     for m in reversed(messages):          # Slack returns newest first
         if m.get("bot_id") or m.get("subtype"):
             continue                      # never echo bot posts back at the agents
         text = m.get("text", "").strip()
         if not text:
             continue
-        if f"<@{me}>" not in text and BOT_NAME not in text:
+        addressed = f"<@{me}>" in text or BOT_NAME in text
+        if not addressed and not read_all:
             continue                      # not addressed to the agents
         text = text.replace(f"<@{me}>", "").strip()
-        lines.append(f"[from Slack -- reply with the notify tool] {text}")
+        if addressed:
+            lines.append(f"[from Slack -- reply with the notify tool] {text}")
+        else:
+            lines.append(f"[from Slack -- overheard, not addressed to you] {text}")
     if not lines:
         return 0
     if secretary_up():

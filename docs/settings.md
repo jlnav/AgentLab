@@ -64,6 +64,7 @@ read; `NOTIFIER` selects a different file. A value already in the environment wi
 | `SLACK_BOT_TOKEN_FILE` | `~/.slack_bot_token` | bot token, needs `channels:history` |
 | `SLACK_BOT_NAME` | `@cas_agent` | plain-text mention fallback |
 | `SLACK_FETCH_POLL` | 5 | seconds between Slack checks; dominates end-to-end latency |
+| `SLACK_READ_ALL` | false | forward every channel message to the secretary, which decides which are for it; mentions only when the secretary is down |
 | `SECRETARY_POLL` | 5 | seconds between inbox checks, and between heartbeat writes |
 | `SECRETARY_ALIVE_WITHIN` | 60 | secretary heartbeat age the bridge still treats as up |
 | `AGENT_ALIVE_WITHIN` | 300 | heartbeat age treated as a live agent |

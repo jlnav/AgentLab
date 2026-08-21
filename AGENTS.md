@@ -236,6 +236,12 @@ wait, carry on:
 
    That copy is not tracked by git. `docs/settings.md` lists every setting it can hold.
 
+   Ask which way they want to reach the agents. By default a message has to mention the
+   bot. With `SLACK_READ_ALL=true` the secretary is given every message in the channel
+   and decides which are for it, so a question can be asked in passing; it costs a
+   secretary turn per message, and the mention rule comes back whenever the secretary
+   is not running.
+
 5. Run the bridge, which forwards channel messages onto the announcements board so
    people can steer running campaigns:
 
