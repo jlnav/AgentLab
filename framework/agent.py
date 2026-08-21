@@ -57,7 +57,7 @@ USER_PROMPT_FILE = os.environ.get("USER_PROMPT_FILE", "user_prompt.md")
 # One timestamp per process, shared by the log file and this run's directory so the
 # two line up. RUN_ID names the run dir and is what kill_agent.sh targets.
 RUN_STAMP = datetime.now().strftime("%Y%m%d_%H%M%S")
-RUN_ID = f"{SYSTEM}_{ROLE}_{RUN_STAMP}"
+RUN_ID = f"{SYSTEM}_{ROLE}_{RUN_STAMP}" if ROLE_SET else f"{SYSTEM}_{RUN_STAMP}"
 RUN_DIR = os.path.join(WORKSPACE_DIR, "runs", RUN_ID)
 LOG_PATH = os.path.join(LOG_DIR, f"run_{SYSTEM}_{RUN_STAMP}.log")
 HEARTBEAT_INTERVAL = 30   # s; minimum gap between heartbeat writes during a wait
@@ -424,6 +424,9 @@ def preflight():
     print(f"preflight OK: task={tools.TASK_DIR}, method.md, WORKSPACE_DIR, {backend}.", flush=True)
 
 
+_session_id = None          # this run's Claude session, for reopening it later
+
+
 async def drain_turn(client, round_num):
     """Print the assistant's output for one turn (until its ResultMessage)."""
     async for message in client.receive_response():
@@ -432,6 +435,13 @@ async def drain_turn(client, round_num):
                 if hasattr(block, "text"):
                     print(block.text, flush=True)
         elif isinstance(message, ResultMessage):
+            # The session id first becomes known here. Recorded once, so a finished run
+            # can be reopened later with `claude -r <id>` for a postmortem.
+            global _session_id
+            sid = getattr(message, "session_id", None)
+            if sid and sid != _session_id:
+                _session_id = sid
+                _write_meta(session_id=sid, session_cwd=SCRIPT_DIR)
             print(f"\n[round {round_num} turn end] {message.subtype}", flush=True)
 
 
@@ -471,7 +481,8 @@ async def main():
     # several run at once. Removed on clean exit.
     run_dir = os.path.join(WORKSPACE_DIR, "run")
     os.makedirs(run_dir, exist_ok=True)
-    pid_file = os.path.join(run_dir, f"agent_{SYSTEM}_{ROLE}.pid")
+    pid_file = os.path.join(run_dir, f"agent_{SYSTEM}_{ROLE}.pid" if ROLE_SET
+                            else f"agent_{SYSTEM}.pid")
     with open(pid_file, "w") as f:
         f.write(str(os.getpid()))
     _start_run_dir()

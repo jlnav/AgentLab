@@ -284,6 +284,9 @@ def live_agents():
     return sorted(out)
 
 
+_session_id = None          # this secretary's Claude session, for reopening it later
+
+
 async def answer(client, text, agents):
     """Put one inbox message to the running conversation and print what comes back."""
     # States who is running, and nothing about what to do with that. An instruction
@@ -300,6 +303,15 @@ async def answer(client, text, agents):
                 if hasattr(block, "text") and block.text.strip():
                     print(block.text, flush=True)
         elif isinstance(message, ResultMessage):
+            global _session_id
+            sid = getattr(message, "session_id", None)
+            if sid and sid != _session_id:
+                _session_id = sid
+                try:
+                    with open(os.path.join(WORKSPACE_ROOT, "run", "secretary_session"), "w") as f:
+                        f.write(f"{sid}\n{WORKSPACE_ROOT}\n")
+                except Exception as e:
+                    print(f"[secretary] session id not recorded (ignored): {e}", flush=True)
             print(f"[turn end] {message.subtype}", flush=True)
 
 

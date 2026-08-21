@@ -5,6 +5,11 @@
 # Usage:
 #   ./list_agents.sh          # agents running now
 #   ./list_agents.sh --all    # every run, including finished ones and how they ended
+#   ./list_agents.sh -n 5     # the last 5 runs, whatever state they are in
+#
+# Each run is one Claude session, kept after the run ends. The session id is printed
+# with the run, and `claude -r <id>` reopens that conversation from anywhere -- what
+# the agent was thinking, not only what it wrote.
 #
 # WORKSPACE_DIR must match the agent's (default is every campaign in the lab).
 set -euo pipefail
@@ -20,22 +25,41 @@ fi
 RUNS_DIR="${WORKSPACE_DIR:-$LAB_DIR/workspace/*}/runs"
 STALE_AFTER=300     # s without a heartbeat before a run is presumed dead
 
-meta_get() {
-    python3 -c '
+# meta.json is read once per run and cached: one python start per run, not per field.
+declare -A META_CACHE=()
+
+meta_load() {   # run_dir -> cache every field we print, as one call
+    local d="$1"
+    [ -n "${META_CACHE[$d|_loaded]:-}" ] && return
+    local line key val
+    while IFS=$'\t' read -r key val; do
+        META_CACHE["$d|$key"]="$val"
+    done < <(python3 -c '
 import json, sys
+fields = ("status", "stop_reason", "handle", "host", "pid",
+          "user_prompt_file", "session_id")
 try:
     with open(sys.argv[1]) as f:
-        print(json.load(f).get(sys.argv[2], "") or "")
+        meta = json.load(f)
 except Exception:
-    print("")
-' "$1/meta.json" "$2"
+    meta = {}
+for k in fields:
+    print(k, str(meta.get(k, "") or "").replace("\t", " "), sep="\t")
+' "$d/meta.json")
+    META_CACHE["$d|_loaded"]=1
+}
+
+meta_get() {
+    meta_load "$1"
+    printf '%s' "${META_CACHE[$1|$2]:-}"
 }
 
 describe() {   # run_dir -> running / stopped (reason) / presumed dead
     local d="$1" status hb age now
-    status="$(meta_get "$d" status)"
+    meta_load "$d"
+    status="${META_CACHE[$d|status]:-}"
     if [ "$status" = "stopped" ]; then
-        echo "stopped: $(meta_get "$d" stop_reason)"
+        echo "stopped: ${META_CACHE[$d|stop_reason]:-}"
         return
     fi
     if [ ! -f "$d/heartbeat" ]; then
@@ -54,7 +78,8 @@ describe() {   # run_dir -> running / stopped (reason) / presumed dead
 
 is_running() {   # a run is running only if it is beating now
     local d="$1" hb age
-    [ "$(meta_get "$d" status)" = "stopped" ] && return 1
+    meta_load "$d"
+    [ "${META_CACHE[$d|status]:-}" = "stopped" ] && return 1
     [ -f "$d/heartbeat" ] || return 1
     hb="$(cat "$d/heartbeat" 2>/dev/null || echo 0)"
     age=$(( $(date +%s) - hb ))
@@ -62,7 +87,14 @@ is_running() {   # a run is running only if it is beating now
 }
 
 ALL=0
-[ "${1:-}" = "--all" ] && ALL=1
+LIMIT=0           # 0 = no limit
+case "${1:-}" in
+    --all) ALL=1 ;;
+    -n) ALL=1; LIMIT="${2:-}"
+        case "$LIMIT" in ''|*[!0-9]*|0) echo "usage: $0 -n <count>" >&2; exit 2 ;; esac ;;
+    "") ;;
+    *) echo "usage: $0 [--all | -n <count>]" >&2; exit 2 ;;
+esac
 
 shopt -s nullglob
 dirs=( "${RUN_DIRS[@]}" )
@@ -71,28 +103,62 @@ if [ "${#dirs[@]}" -eq 0 ]; then
     exit 0
 fi
 
-shown=0
+# Choose what to show before printing any of it, so the header can describe what is
+# actually there rather than what might be.
+show=()
 # ls only ever gets real arguments here; with no args it would list '.' instead.
 for d in $(ls -1dt "${dirs[@]}"); do
     d="${d%/}"
     if [ "$ALL" -eq 0 ] && ! is_running "$d"; then
         continue        # finished runs are history; --all shows them
     fi
-    shown=1
-    printf '%s\n    host=%s pid=%s prompt=%s\n    %s\n' \
-        "$(basename "$d")" \
-        "$(meta_get "$d" host)" "$(meta_get "$d" pid)" \
-        "$(meta_get "$d" user_prompt_file)" \
-        "$(describe "$d")"
-    if [ -f "$d/stop" ]; then
-        echo "    stop requested (draining)"
-    fi
+    show+=( "$d" )
+    [ "$LIMIT" -gt 0 ] && [ "${#show[@]}" -ge "$LIMIT" ] && break
 done
 
-if [ "$shown" -eq 0 ]; then
+if [ "${#show[@]}" -eq 0 ]; then
     if [ "$ALL" -eq 1 ]; then
         echo "no runs in $RUNS_DIR"
     else
         echo "no agents running  (${#dirs[@]} past run(s); --all to see them)"
     fi
+    exit 0
 fi
+
+# Said once, and only when a finished run in this listing has a session to reopen.
+for d in "${show[@]}"; do
+    meta_load "$d"
+    if [ -n "${META_CACHE[$d|session_id]:-}" ] && ! is_running "$d"; then
+        echo "Reopen a finished run's conversation with: claude -r <session>"
+        echo
+        break
+    fi
+done
+
+for d in "${show[@]}"; do
+    meta_load "$d"
+    handle="${META_CACHE[$d|handle]:-}"
+    printf '%s%s\n    host=%s pid=%s prompt=%s\n    %s\n' \
+        "$(basename "$d")" \
+        "${handle:+  [$handle]}" \
+        "${META_CACHE[$d|host]:-}" "${META_CACHE[$d|pid]:-}" \
+        "${META_CACHE[$d|user_prompt_file]:-}" \
+        "$(describe "$d")"
+    sid="${META_CACHE[$d|session_id]:-}"
+    # Only for runs that have ended. A live agent is still writing its conversation,
+    # and reading it back is not what you want from a listing of what is running.
+    if [ -n "$sid" ] && ! is_running "$d"; then
+        # A transcript lives in the home directory of whoever ran it, on the machine
+        # that ran it, and is pruned on that machine's own schedule. Another user's
+        # run, another host, and a pruned one are all the same answer to the only
+        # question worth asking: can this be opened from here.
+        if compgen -G "$HOME/.claude/projects/*/$sid.jsonl" >/dev/null; then
+            printf '    session: %s\n' "$sid"
+        else
+            printf '    session: %s (unavailable)\n' "$sid"
+        fi
+    fi
+    if [ -f "$d/stop" ]; then
+        echo "    stop requested (draining)"
+    fi
+done
