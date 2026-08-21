@@ -46,6 +46,11 @@ A refuted hypothesis is a good cycle. Record it as refuted and say what it elimi
 - **`JOURNAL.md`** — the readable record, appended per cycle: the five steps, a table or
   figure where it helps, and pointers to the `results.jsonl` lines behind each claim.
 
+Figures are real image files, not descriptions of one. Plot with matplotlib through
+`Bash`, save under `journal/figures/` in the shared area, and reference each with a
+brief caption. Keep the plotting script beside its figure so the figure can be redrawn
+when more data lands.
+
 At the end of a run, append a closing summary to `LOGBOOK.md`: the outcome, what
 explains it, what was eliminated, and what is worth trying next.
 

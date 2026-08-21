@@ -2,7 +2,7 @@
 """
 CAS: an agent that searches a domain by running work on HPC via Globus Compute.
 
-System prompt: prompt.md (method) + SYSTEM.md (where/how runs are hosted)
+System prompt: prompt.md (the goal) + method.md (how to work)
 User prompt:   user_prompt.md (initial task — editable without touching this file)
 
 Usage:
@@ -201,8 +201,15 @@ def load_prompt():
         return f.read()
 
 
-def load_system():
-    with open(os.path.join(SCRIPT_DIR, "SYSTEM.md")) as f:
+def method_path():
+    """The campaign's own method.md if it has one, else the framework default. A
+    campaign overrides how the agent works by dropping the file in beside prompt.md."""
+    campaign_copy = os.path.join(CAMPAIGN_DIR, "method.md")
+    return campaign_copy if os.path.isfile(campaign_copy) else os.path.join(SCRIPT_DIR, "method.md")
+
+
+def load_method():
+    with open(method_path()) as f:
         return f.read()
 
 
@@ -255,10 +262,11 @@ _last_heartbeat = 0.0
 
 def _start_run_dir():
     os.makedirs(RUN_DIR, exist_ok=True)
-    for base, name in ((CAMPAIGN_DIR, "prompt.md"), (SCRIPT_DIR, "SYSTEM.md"),
-                       (CAMPAIGN_DIR, USER_PROMPT_FILE)):
+    for path in (os.path.join(CAMPAIGN_DIR, "prompt.md"), method_path(),
+                 os.path.join(CAMPAIGN_DIR, USER_PROMPT_FILE)):
+        name = os.path.basename(path)
         try:
-            shutil.copy2(os.path.join(base, name), os.path.join(RUN_DIR, name))
+            shutil.copy2(path, os.path.join(RUN_DIR, name))
         except Exception as e:
             print(f"[run] could not snapshot {name} (ignored): {e}", flush=True)
     _write_meta(run_id=RUN_ID, system=SYSTEM, role=ROLE,
@@ -312,9 +320,8 @@ def preflight():
             problems.append(f"task preflight() raised: {e}")
     if not os.path.isdir(WORKSPACE_DIR):
         problems.append(f"WORKSPACE_DIR does not exist: {WORKSPACE_DIR}")
-    system_md = os.path.join(SCRIPT_DIR, "SYSTEM.md")
-    if not os.path.isfile(system_md):
-        problems.append(f"SYSTEM.md missing: {system_md} (system-details prompt loaded into the agent)")
+    if not os.path.isfile(method_path()):
+        problems.append(f"method.md missing: {method_path()} (how-to-work prompt loaded into the agent)")
     # Fail fast if the Globus Compute endpoint is not online -- otherwise every
     # submit fails with ENDPOINT_NOT_ONLINE and the run does nothing. A task with no
     # remote_fn never reaches the endpoint, so there is nothing to probe.
@@ -349,7 +356,7 @@ def preflight():
             print(f"  - {pr}", flush=True)
         sys.exit(1)
     backend = "endpoint online" if tools.HAS_REMOTE else "local execution only"
-    print(f"preflight OK: task={tools.TASK_DIR}, SYSTEM.md, WORKSPACE_DIR, {backend}.", flush=True)
+    print(f"preflight OK: task={tools.TASK_DIR}, method.md, WORKSPACE_DIR, {backend}.", flush=True)
 
 
 async def drain_turn(client, round_num):
@@ -365,7 +372,7 @@ async def drain_turn(client, round_num):
 
 async def main():
     system_prompt = load_prompt()
-    system_prompt += "\n\n" + load_system()
+    system_prompt += "\n\n" + load_method()
     system_prompt += f"\n\n# This agent\nSYSTEM={SYSTEM}  ROLE={ROLE}.\nThe shared files (results.jsonl, LOGBOOK.md, JOURNAL.md, claims.jsonl) live in {WORKSPACE_DIR} \u2014 always read and write them by full path there (e.g. {WORKSPACE_DIR}/results.jsonl). Follow the role rules in the Collaboration section of the prompt."
     server = create_server()
 

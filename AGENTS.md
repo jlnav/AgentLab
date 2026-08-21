@@ -51,9 +51,18 @@ it stands:
 | `task.py` | how one job runs, what it returns, what the agent is told about it |
 | `campaign.json` | which system, and any parameters for it |
 | `run.sh` | settings and launch |
+| `method.md` | optional; how the agent works, when the default does not suit |
 
-`campaigns/example-vllm-inference-opt/` has all five to copy the shape from, and its
+`campaigns/example-vllm-inference-opt/` has all of these to copy the shape from, and its
 README says more about each.
+
+`framework/method.md` sets how the agent works — the cycle it follows and the records it
+keeps — and applies to every campaign. A campaign with its own `method.md` beside
+`prompt.md` uses that instead. Leave it absent unless something the user has said
+conflicts with the default: then copy the framework file in and change the part that
+conflicts, so the campaign keeps the rest. Wanting figures, a fuller journal, or a
+different report at the end are the usual reasons;
+`campaigns/example-vllm-inference-opt/method.md` is one that does this.
 
 `task.py` defines a job in one of two places, and may define both:
 

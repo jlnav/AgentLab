@@ -86,6 +86,7 @@ Copy `campaigns/example-vllm-inference-opt/` and replace four files:
 | `user_prompt.md` | what to do first |
 | `task.py` | how one job runs, what it returns, and what the agent is told about it |
 | `campaign.json` | which system, and any parameters for it |
+| `method.md` | optional; overrides `framework/method.md` for this campaign |
 
 `task.py` defines the job. For work that runs on the system: `JOB_DESC`, `JOB_SCHEMA`,
 `job_key`, `remote_fn` — `remote_fn` is sent to the worker by source, so everything it
