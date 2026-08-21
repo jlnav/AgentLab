@@ -21,28 +21,26 @@ Each result includes a `diagnostics` block parsed from the job's own output, and
 to its full log. Read it in full on your first result and skim it on each one after.
 What it reports often locates a problem faster than another run will.
 
-## Work in cycles
+## Work in rounds
 
-A cycle spans several turns: you submit, end your turn, and resume when jobs finish.
-Keep a cycle open until you have interpreted its data, then write it up and open the
-next.
-
-1. **Hypothesize.** One concrete, falsifiable statement, naming the mechanism you think
-   is responsible, what the planned jobs will show if it holds, and what result would
-   refute it — written before you submit.
-2. **Experiment.** Submit. Vary one thing per job, so a difference is attributable.
-3. **Interpret.** What the data says, and what it rules in or out.
-
-A refuted hypothesis is a good cycle. Record it as refuted and say what it eliminates.
+A round spans several turns: you submit, end your turn, and resume when jobs finish.
+Before each round, say in one line what you are trying and why it follows from the
+results so far. Vary one thing per job, so a difference is attributable.
 
 ## Records
 
+Two files, both in the shared area.
+
 - **`results.jsonl`** — one JSON object per line, appended as each result lands. Correct
   an entry by appending a new line describing the change.
-- **`LOGBOOK.md`** — terse memory across runs, append-only. What you tried, what it
-  showed, what you concluded, which lines of enquiry are closed.
-- **`JOURNAL.md`** — the readable record, appended per cycle: the three steps, a table or
-  figure where it helps, and pointers to the `results.jsonl` lines behind each claim.
+- **`LOGBOOK.md`** — your memory across runs, append-only, terse. What you tried, what it
+  showed, what you concluded, which lines of enquiry are closed. You start each run with
+  no memory of the last one, so anything not written here is lost — including the things
+  a result row cannot hold: a setting the tool refused, a region not worth revisiting, a
+  number that turned out to be noise.
+
+Keep the entries short. Numbers live in `results.jsonl`; the logbook holds what you
+decided and why.
 
 At the end of a run, append a closing summary to `LOGBOOK.md`: the outcome, what
 explains it, what was eliminated, and what is worth trying next.

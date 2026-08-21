@@ -56,13 +56,20 @@ it stands:
 `campaigns/example-vllm-inference-opt/` has all of these to copy the shape from, and its
 README says more about each.
 
-`framework/method.md` sets how the agent works — the cycle it follows and the records it
-keeps — and applies to every campaign. A campaign with its own `method.md` beside
-`prompt.md` uses that instead. Leave it absent unless something the user has said
-conflicts with the default: then copy the framework file in and change the part that
-conflicts, so the campaign keeps the rest. Wanting figures, a fuller journal, or a
-different report at the end are the usual reasons;
-`campaigns/example-vllm-inference-opt/method.md` is one that does this.
+`methods/` holds the two starting points for how the agent works. Copy one into the
+campaign as `method.md` — the agent reads the campaign's copy, so every campaign owns
+its own and can be changed without affecting any other:
+
+| | |
+|---|---|
+| `methods/standard.md` | runs jobs in rounds, keeps `results.jsonl` and `LOGBOOK.md` |
+| `methods/research.md` | five-step cycles, and a `JOURNAL.md`/`JOURNAL.tex` write-up per cycle with figures |
+
+Choose from what they described. Take `standard.md` unless they are investigating why
+something behaves as it does and want the reasoning recorded — a typeset report, figures
+per cycle, hypotheses written down — in which case take `research.md`. Say which you
+copied and why, in a line. Then change anything in it that conflicts with what they have
+already told you, and leave the rest.
 
 `task.py` defines a job in one of two places, and may define both:
 

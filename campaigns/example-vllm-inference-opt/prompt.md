@@ -75,7 +75,7 @@ explain means investigating the reason before going on.
 
 ## Deliverable: SKILL.md
 
-Alongside the journal, write `SKILL.md` in the workspace. It is guidance for someone
+Write `SKILL.md` in the workspace. It is guidance for someone
 tuning single-node inference on a machine and model that are not these ones.
 
 Draft it once you have a first confirmed finding and revise it as more land, so it

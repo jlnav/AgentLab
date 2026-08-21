@@ -21,8 +21,11 @@ secretary, so nobody stands up new infrastructure per question.
 ## Structure
 
 ```
-framework/     the agent loop, the tools it calls, and the mechanics prompt.
-               Not edited per campaign.
+framework/     the agent loop and the tools it calls. Not edited per campaign.
+
+methods/       how the agent works, and what it records. One is copied into a
+               campaign at setup: standard.md, or research.md for hypothesis
+               cycles with a written-up journal.
 
 systems/       one file per machine: module line, proxy, cache paths, queue
                defaults — whatever is true for everyone there.
@@ -36,6 +39,7 @@ campaigns/<name>/
                user_prompt.md   this run's kick-off
                task.py          what a job does
                campaign.json    which system, and what to run on it
+               method.md        how the agent works, copied from methods/
 
 workspace/<name>/
                everything the agent produces. Not tracked by git.
@@ -86,7 +90,7 @@ Copy `campaigns/example-vllm-inference-opt/` and replace four files:
 | `user_prompt.md` | what to do first |
 | `task.py` | how one job runs, what it returns, and what the agent is told about it |
 | `campaign.json` | which system, and any parameters for it |
-| `method.md` | optional; overrides `framework/method.md` for this campaign |
+| `method.md` | how the agent works — copied from `methods/` at setup |
 
 `task.py` defines the job. For work that runs on the system: `JOB_DESC`, `JOB_SCHEMA`,
 `job_key`, `remote_fn` — `remote_fn` is sent to the worker by source, so everything it

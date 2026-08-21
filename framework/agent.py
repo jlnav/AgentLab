@@ -202,10 +202,12 @@ def load_prompt():
 
 
 def method_path():
-    """The campaign's own method.md if it has one, else the framework default. A
-    campaign overrides how the agent works by dropping the file in beside prompt.md."""
+    """How the agent works, and what records it keeps. Setup copies one of `methods/`
+    into the campaign, so each campaign owns its own and can change it. The library
+    default applies to a campaign created before this, or one whose copy is missing."""
     campaign_copy = os.path.join(CAMPAIGN_DIR, "method.md")
-    return campaign_copy if os.path.isfile(campaign_copy) else os.path.join(SCRIPT_DIR, "method.md")
+    return (campaign_copy if os.path.isfile(campaign_copy)
+            else os.path.join(LAB_DIR, "methods", "standard.md"))
 
 
 def load_method():
