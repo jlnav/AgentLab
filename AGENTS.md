@@ -227,14 +227,23 @@ wait, carry on:
    receive when they join.
 3. Create a bot token with `channels:history`, in `~/.slack_bot_token`. Inbound only —
    members never need it.
-4. Run the bridge, which forwards channel messages onto the announcements board so
+4. Record the lab's settings, which is the channel ID and the bot name as people
+   mention it:
+
+   ```
+   cp notifiers/slack.env.template notifiers/slack.env
+   ```
+
+   That copy is not tracked by git. `docs/settings.md` lists every setting it can hold.
+
+5. Run the bridge, which forwards channel messages onto the announcements board so
    people can steer running campaigns:
 
    ```
-   framework/run_slack_bridge.sh      set SLACK_CHANNEL and SLACK_BOT_NAME first
+   framework/run_slack_bridge.sh
    ```
 
-5. Run the secretary, which answers questions from the recorded results so campaigns
+6. Run the secretary, which answers questions from the recorded results so campaigns
    are not interrupted to reply:
 
    ```

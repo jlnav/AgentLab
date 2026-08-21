@@ -28,9 +28,17 @@ through the other, and neither passes through the app — the app is an identity
 authorises it, so any machine holding the file can post.
 
 **Inbound.** `framework/slack_to_board.py` polls
-`https://slack.com/api/conversations.history` with the bot token, every 30 seconds, and
-appends any message mentioning the bot to `workspace/<campaign>/ANNOUNCEMENTS.md`. A
-message naming a campaign goes to that one; otherwise to all of them.
+`https://slack.com/api/conversations.history` with the bot token, every 5 seconds, and
+delivers any message mentioning the bot. Where it delivers depends on the secretary's
+heartbeat in `workspace/run/secretary_heartbeat`:
+
+- **secretary up** — to `workspace/run/slack_inbox.md`, which only the secretary reads.
+  One question, one answer.
+- **secretary down** — to every campaign's `ANNOUNCEMENTS.md`, where the running agents
+  pick it up. A message naming a campaign goes to that one. One answer per campaign.
+
+The heartbeat is rewritten every poll, so a secretary that dies or wedges mid-answer
+fails over to the boards rather than leaving questions in an inbox nobody reads.
 
 Slack has no way to reach a compute node directly, which is why inbound is a poll rather
 than Slack pushing to you.
@@ -43,12 +51,23 @@ other means works identically.
 
 ## The secretary
 
-`framework/secretary.py` watches the boards and answers from `results.jsonl`,
+`framework/secretary.py` watches the inbox and answers from `results.jsonl`,
 `LOGBOOK.md` and `JOURNAL.md`, posting back through the webhook.
 
-When campaigns are running, it is the first responder, so a question is answered once
-rather than by every agent that sees the board. It checks for a live agent and relays
-only what needs that agent's own reasoning.
+While it is running it owns the Slack questions, so one question gets one answer
+however many campaigns and agents are running. It holds one continuing conversation,
+so follow-ups work like a chat, and re-reads the files for every factual answer.
+
+What it cannot know is a running agent's live reasoning. That it relays, by appending
+to that campaign's board addressed to one agent:
+
+```
+[for research agent <run_id>] <question>   that agent answers
+[for all research agents] <question>       every running agent in the campaign answers
+```
+
+An unaddressed line is answered by every agent reading that board, which is why a
+relay always names its reader.
 
 ## Where things run
 
@@ -57,6 +76,14 @@ only what needs that agent's own reasoning.
 | campaign agent | any machine, one per campaign | `~/.slack_webhook` |
 | bridge, `run_slack_bridge.sh` | one per lab | `~/.slack_bot_token`, `SLACK_CHANNEL` |
 | secretary, `run_secretary.sh` | one per lab | `~/.slack_webhook` |
+
+Every post carries `*[$SLACK_PREFIX]*` — the campaign and agent for a research agent,
+`secretary` for the secretary — applied in `slack_notify.sh` so one channel shared by
+several campaigns stays readable.
+
+The channel ID and the other settings the two lab processes read live in
+`notifiers/slack.env`, copied from `notifiers/slack.env.template` and untracked. The
+credentials stay where they are, outside the repository.
 
 Which is why joining a lab is a one-line setup: you need the channel and the webhook URL,
 and nothing else. Creating the app, issuing the token and running the two processes

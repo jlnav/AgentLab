@@ -10,7 +10,9 @@ Usage:
 """
 
 import asyncio
+import glob
 import json
+import re
 import os
 import shutil
 import signal
@@ -45,6 +47,10 @@ CAMPAIGN_DIR = os.path.abspath(os.environ.get(
     "CAMPAIGN_DIR", os.path.join(LAB_DIR, "campaigns", CAMPAIGN) if CAMPAIGN else SCRIPT_DIR))
 SYSTEM = tools.SYSTEM          # from the campaign's campaign.json
 ROLE = os.environ.get("ROLE", "both")
+# Roles only mean something when a campaign splits work between agents. Left unset,
+# they are noise in anything a person reads, so they are shown only when set.
+ROLE_SET = bool(os.environ.get("ROLE"))
+ROLE_NOTE = f" ({ROLE})" if ROLE_SET else ""
 LOG_DIR = os.path.join(WORKSPACE_DIR, "logs")
 USER_PROMPT_FILE = os.environ.get("USER_PROMPT_FILE", "user_prompt.md")
 
@@ -55,6 +61,62 @@ RUN_ID = f"{SYSTEM}_{ROLE}_{RUN_STAMP}"
 RUN_DIR = os.path.join(WORKSPACE_DIR, "runs", RUN_ID)
 LOG_PATH = os.path.join(LOG_DIR, f"run_{SYSTEM}_{RUN_STAMP}.log")
 HEARTBEAT_INTERVAL = 30   # s; minimum gap between heartbeat writes during a wait
+AGENT_ALIVE_WITHIN = int(os.environ.get("AGENT_ALIVE_WITHIN", "300"))  # s; fresher heartbeat = agent is up
+
+
+def _live_handles():
+    """(handle, campaign) for every agent running anywhere in the lab right now, from
+    their meta.json. A handle is only held while its agent is alive, so both slugs and
+    numbers are reused once a run ends."""
+    out = []
+    now = time.time()
+    root = os.path.dirname(WORKSPACE_DIR)      # workspace/, one dir per campaign
+    for hb in glob.glob(os.path.join(root, "*", "runs", "*", "heartbeat")):
+        try:
+            with open(hb) as f:
+                if now - float(f.read().strip()) > AGENT_ALIVE_WITHIN:
+                    continue
+            with open(os.path.join(os.path.dirname(hb), "meta.json")) as f:
+                meta = json.load(f)
+        except Exception:
+            continue          # unreadable run: treat its handle as free
+        if meta.get("handle"):
+            out.append((meta["handle"], meta.get("campaign", "")))
+    return out
+
+
+def _allocate_handle():
+    """The short name a person uses to mean this agent -- "get a report from epez1".
+
+    RUN_ID is exact but too long to say, and a campaign/system pair is not one word.
+    So: a slug of the campaign name plus a number, unique across every agent running
+    in the lab, which is what makes it usable on its own in Slack.
+
+    The slug grows only when two campaigns would otherwise collide, and the number is
+    the lowest free one, so the common case stays as short as it can be."""
+    live = _live_handles()
+    name = "".join(c for c in (CAMPAIGN or SYSTEM).lower() if c.isalnum() or c in "-_")
+    words = [w for w in re.split(r"[-_]", name) if w] or ["agent"]
+    # First word, then as much of the rest as it takes to stop looking like another
+    # campaign's agents. Never shortened: "local" reads as the campaign, "loca" does not.
+    slugs = [words[0][:8]]
+    for w in words[1:]:
+        slugs.append((slugs[-1] + w)[:10])
+    slugs.append(name.replace("-", "").replace("_", "")[:12])
+    for slug in slugs:
+        if any(h.rstrip("0123456789") == slug and c != CAMPAIGN for h, c in live):
+            continue          # another campaign already answers to this slug
+        for n in range(1, 100):
+            cand = f"{slug}{n}"
+            if cand not in {h for h, _ in live}:
+                return cand
+    return f"{words[0][:8]}{RUN_STAMP[9:]}"
+
+
+HANDLE = _allocate_handle()
+# Prefixed to this agent's Slack posts by slack_notify.sh. The handle alone, because
+# it is unique across the lab and is what someone types to address this agent.
+os.environ.setdefault("SLACK_PREFIX", HANDLE)
 # Turns given to the agent AFTER everything has drained, so it can write the
 # journal/LOGBOOK before the process exits.
 MAX_FINALIZE_ROUNDS = 2
@@ -104,7 +166,7 @@ NOTIFY_DAILY = _bool_env("NOTIFY_DAILY", True)
 NOTIFY_FINISH = _bool_env("NOTIFY_FINISH", True)
 DAILY_INTERVAL = int(os.environ.get("NOTIFY_DAILY_INTERVAL", "86400"))  # seconds between periodic summaries
 PROBLEM_GRACE = int(os.environ.get("NOTIFY_PROBLEM_GRACE", "1800"))     # shut down this long (s) after the agent flags an unresolved blocking problem
-NOTIFY_SCRIPT = os.path.join(SCRIPT_DIR, "slack_notify.sh")
+NOTIFY_SCRIPT = os.environ.get("NOTIFY_SCRIPT") or os.path.join(SCRIPT_DIR, "slack_notify.sh")
 
 # When a periodic summary is due, the runner asks the agent to write it (its own
 # words) via the notify tool, instead of a fixed harness string.
@@ -154,7 +216,7 @@ async def _post_scheduled_status(client, round_num, start_time):
     tok, win, pct = u.get("totalTokens"), u.get("rawMaxTokens"), u.get("percentage")
     ctx = (f"ctx ~{tok}/{win} (~{pct:.0f}%)"
            if tok is not None and win and pct is not None else "ctx n/a")
-    slack_notify(f":calendar: Scheduled Status — {SYSTEM} ({ROLE}) · {model}, "
+    slack_notify(f":calendar: Scheduled Status — {model}, "
                  f"round {round_num} · {tools.submit_count()} remote / {tools.local_submit_count()} local "
                  f"this session · {tools.jobs_in_flight()} in-flight · {ctx} · "
                  f"uptime {_fmt_uptime(time.time() - start_time)}")
@@ -271,7 +333,7 @@ def _start_run_dir():
             shutil.copy2(path, os.path.join(RUN_DIR, name))
         except Exception as e:
             print(f"[run] could not snapshot {name} (ignored): {e}", flush=True)
-    _write_meta(run_id=RUN_ID, system=SYSTEM, role=ROLE,
+    _write_meta(run_id=RUN_ID, handle=HANDLE, system=SYSTEM, role=ROLE,
                 host=socket.gethostname(), pid=os.getpid(),
                 started_at=datetime.now().isoformat(timespec="seconds"),
                 user_prompt_file=USER_PROMPT_FILE,
@@ -337,7 +399,7 @@ def preflight():
                     _nm = _c.get_endpoint_metadata(tools.ENDPOINT_ID).get("name") or tools.ENDPOINT_ID
                 except Exception:
                     _nm = tools.ENDPOINT_ID
-                slack_notify(f":rotating_light: Agent exiting -- {SYSTEM} ({ROLE}): Globus Compute "
+                slack_notify(f":rotating_light: Agent exiting -- Globus Compute "
                              f"endpoint '{_nm}' is not online (status={_st}). Start it: "
                              f"globus-compute-endpoint start {_nm} --detach")
                 problems.append(f"Globus Compute endpoint '{_nm}' ({tools.ENDPOINT_ID}) is not online "
@@ -375,7 +437,7 @@ async def drain_turn(client, round_num):
 async def main():
     system_prompt = load_prompt()
     system_prompt += "\n\n" + load_method()
-    system_prompt += f"\n\n# This agent\nSYSTEM={SYSTEM}  ROLE={ROLE}.\nThe shared files (results.jsonl, LOGBOOK.md, JOURNAL.md, claims.jsonl) live in {WORKSPACE_DIR} \u2014 always read and write them by full path there (e.g. {WORKSPACE_DIR}/results.jsonl). Follow the role rules in the Collaboration section of the prompt."
+    system_prompt += f"\n\n# This agent\nSYSTEM={SYSTEM}.{f'  ROLE={ROLE}.' if ROLE_SET else ''}\nThe shared files (results.jsonl, LOGBOOK.md, JOURNAL.md, claims.jsonl) live in {WORKSPACE_DIR} \u2014 always read and write them by full path there (e.g. {WORKSPACE_DIR}/results.jsonl). Follow the role rules in the Collaboration section of the prompt."
     server = create_server()
 
     options = ClaudeAgentOptions(
@@ -432,10 +494,11 @@ async def main():
     try:
         async with ClaudeSDKClient(options=options) as client:
             model = (await _context_usage(client) or {}).get("model") or "?"
-            print(f"Agent started -- {SYSTEM} ({ROLE}) · model {model}", flush=True)
+            print(f"Agent started -- {SYSTEM}{ROLE_NOTE} · model {model}", flush=True)
             _write_meta(model=model)
             if NOTIFY_START:
-                slack_notify(f":rocket: Agent started — {SYSTEM} ({ROLE}) · {model}.")
+                slack_notify(f":rocket: Agent {HANDLE} started — "
+                             f"{CAMPAIGN or 'no campaign'} on {SYSTEM}{ROLE_NOTE} · {model}.")
             prompt = load_user_prompt()
             empty_rounds = 0
             last_daily = start_time
@@ -609,7 +672,7 @@ async def main():
             except OSError:
                 pass
         if NOTIFY_FINISH:
-            slack_notify(f":checkered_flag: Agent stopped — {SYSTEM} ({ROLE}), "
+            slack_notify(f":checkered_flag: Agent stopped — "
                          f"reason: {stop_reason} · {tools.submit_count()} remote / "
                          f"{tools.local_submit_count()} local submitted · "
                          f"uptime {_fmt_uptime(time.time() - start_time)}.")

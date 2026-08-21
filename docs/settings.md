@@ -28,6 +28,8 @@ Slack and notification. Without `SLACK_WEBHOOK_FILE` these do nothing.
 | | default | |
 |---|---|---|
 | `SLACK_WEBHOOK_FILE` | `~/.slack_webhook` | incoming webhook for outbound posts |
+| `SLACK_PREFIX` | `<campaign>/<system>-<role>` | prepended to every post, so one channel carrying several campaigns stays readable |
+| `NOTIFY_SCRIPT` | `framework/slack_notify.sh` | the script that posts a message; another transport's script goes here |
 | `NOTIFY_START` | false | post when a launch starts |
 | `NOTIFY_DAILY` | true | periodic status post |
 | `NOTIFY_DAILY_INTERVAL` | 86400 | seconds between those posts |
@@ -51,7 +53,9 @@ Less often changed.
 
 ## Environment — Slack bridge and secretary
 
-One of each per lab, not per campaign.
+One of each per lab, not per campaign. The lab's own values live in
+`notifiers/<transport>.env`, default `notifiers/slack.env`, which the two launchers
+read; `NOTIFIER` selects a different file. A value already in the environment wins.
 
 | | default | |
 |---|---|---|
@@ -59,8 +63,9 @@ One of each per lab, not per campaign.
 | `SLACK_CHANNEL` | — | channel ID the bridge reads |
 | `SLACK_BOT_TOKEN_FILE` | `~/.slack_bot_token` | bot token, needs `channels:history` |
 | `SLACK_BOT_NAME` | `@cas_agent` | plain-text mention fallback |
-| `SLACK_FETCH_POLL` | 30 | seconds between Slack checks |
-| `SECRETARY_POLL` | 10 | seconds between board checks |
+| `SLACK_FETCH_POLL` | 5 | seconds between Slack checks; dominates end-to-end latency |
+| `SECRETARY_POLL` | 5 | seconds between inbox checks, and between heartbeat writes |
+| `SECRETARY_ALIVE_WITHIN` | 60 | secretary heartbeat age the bridge still treats as up |
 | `AGENT_ALIVE_WITHIN` | 300 | heartbeat age treated as a live agent |
 
 ## Files

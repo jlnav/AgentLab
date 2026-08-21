@@ -145,7 +145,7 @@ JOBS_LOG = os.path.join(WORKSPACE_DIR, "jobs.jsonl")          # durable record o
 # agent reads it and decides what applies to it. No routing, no per-agent state.
 ANNOUNCEMENTS_FILE = os.path.join(WORKSPACE_DIR, "ANNOUNCEMENTS.md")
 
-NOTIFY_SCRIPT = os.path.join(SCRIPT_DIR, "slack_notify.sh")
+NOTIFY_SCRIPT = os.environ.get("NOTIFY_SCRIPT") or os.path.join(SCRIPT_DIR, "slack_notify.sh")
 _last_success_time = None   # last non-error completion (real progress)
 _problem_since = None       # when the agent flagged a blocking problem (None = none)
 

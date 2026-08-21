@@ -5,9 +5,15 @@
 #
 # Usage: slack_notify.sh "message text"
 # Webhook file: $SLACK_WEBHOOK_FILE, else ~/.slack_webhook  (keep this file OUT of the repo)
+#
+# $SLACK_PREFIX (e.g. "local-test/local-both", or "secretary") is prepended to every
+# message. It is applied HERE rather than by the callers because several posters share
+# one channel -- each campaign's agent via tools.py, the secretary by running this
+# script directly -- and without it their messages are indistinguishable.
 set -u
 WEBHOOK_FILE="${SLACK_WEBHOOK_FILE:-$HOME/.slack_webhook}"
 MSG="$*"
+[ -n "${SLACK_PREFIX:-}" ] && MSG="*[${SLACK_PREFIX}]* ${MSG}"
 if [ -z "$MSG" ]; then echo "usage: $0 <message>" >&2; exit 2; fi
 if [ ! -s "$WEBHOOK_FILE" ]; then echo "slack_notify: no webhook file at $WEBHOOK_FILE (skipping)" >&2; exit 3; fi
 WH="$(cat "$WEBHOOK_FILE")"

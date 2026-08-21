@@ -16,3 +16,7 @@ venv/
 
 # Local scratch: proxy configs, venvs, probes.
 scratch/
+
+# Lab messaging settings: channel IDs, credential paths.
+notifiers/*
+!notifiers/*.template
