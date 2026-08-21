@@ -3,7 +3,7 @@
 # a person running the campaign's own run.sh, and it is what the secretary is allowed
 # to call, so it checks rather than trusts:
 #
-#   - the campaign is named in STARTABLE_CAMPAIGNS, so reachable from Slack only when
+#   - the campaign is named in SLACK_CAMPAIGNS, so reachable from Slack only when
 #     someone deliberately put it there
 #   - the campaign exists and has a run.sh
 #   - no agent is already live on it
@@ -22,11 +22,11 @@ case "$CAMPAIGN" in
 esac
 
 # Allowlist. Space- or comma-separated; empty means nothing may be started this way.
-STARTABLE="${STARTABLE_CAMPAIGNS:-}"
-STARTABLE="${STARTABLE//,/ }"
+ALLOWED="${SLACK_CAMPAIGNS:-}"
+ALLOWED="${ALLOWED//,/ }"
 ok=false
-for c in $STARTABLE; do [ "$c" = "$CAMPAIGN" ] && ok=true; done
-$ok || { echo "start_run: '$CAMPAIGN' is not in STARTABLE_CAMPAIGNS" >&2; exit 3; }
+for c in $ALLOWED; do [ "$c" = "$CAMPAIGN" ] && ok=true; done
+$ok || { echo "start_run: '$CAMPAIGN' is not in SLACK_CAMPAIGNS" >&2; exit 3; }
 
 RUN_SH="$LAB_DIR/campaigns/$CAMPAIGN/run.sh"
 [ -x "$RUN_SH" ] || { echo "start_run: no runnable $RUN_SH" >&2; exit 4; }
