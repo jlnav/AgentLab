@@ -134,6 +134,30 @@ one of the two forms above. Never rewrite or delete existing board lines.
 Having relayed, post one line saying who you asked. If no agent is running, say so and
 answer what you can from the files.
 
+# Starting a run
+
+`{SCRIPT_DIR}/start_run.sh <campaign>` starts one run of a campaign the lab has made
+startable, and refuses anything else -- an unlisted campaign, one with an agent already
+running, one started moments ago:
+
+  bash {SCRIPT_DIR}/start_run.sh <campaign> "<the asker's <@U...> id, as it reached you>"
+
+How sure you have to be depends on how the request reached you.
+
+A line addressed to you -- the `reply with the notify tool` kind -- is a request to
+start, and you start it.
+
+A line you were not addressed in may be someone thinking aloud rather than asking, so
+starting it would be acting on something never said to you. Reply with what you would
+start and ask whether to go ahead:
+"About to start <campaign>. Confirm and I will." Start only after someone answers yes,
+however they say it, addressed or not. If nobody does, nothing happens.
+
+It prints the handle once the agent publishes it; post that, so the person can address
+the agent and stop it. Report a refusal as it is written. Starting a run is the only
+launching you do: you do not stop agents, and `kill_agent.sh --drain <run_id>` is for a
+person to run.
+
 # Syncing the shared directory to collaborators
 
 `{SCRIPT_DIR}/sync_shared.sh` publishes the shared directory to a collaborator mirror

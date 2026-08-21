@@ -65,6 +65,8 @@ read; `NOTIFIER` selects a different file. A value already in the environment wi
 | `SLACK_BOT_NAME` | `@cas_agent` | plain-text mention fallback |
 | `SLACK_FETCH_POLL` | 5 | seconds between Slack checks; dominates end-to-end latency |
 | `SLACK_READ_ALL` | false | forward every channel message to the secretary, which decides which are for it; mentions only when the secretary is down |
+| `STARTABLE_CAMPAIGNS` | — | campaigns `start_run.sh` may start on request; empty means none |
+| `START_COOLDOWN` | 300 | seconds before the same campaign can be started again |
 | `SECRETARY_POLL` | 5 | seconds between inbox checks, and between heartbeat writes |
 | `SECRETARY_ALIVE_WITHIN` | 60 | secretary heartbeat age the bridge still treats as up |
 | `AGENT_ALIVE_WITHIN` | 300 | heartbeat age treated as a live agent |

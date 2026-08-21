@@ -334,6 +334,7 @@ def _start_run_dir():
         except Exception as e:
             print(f"[run] could not snapshot {name} (ignored): {e}", flush=True)
     _write_meta(run_id=RUN_ID, handle=HANDLE, system=SYSTEM, role=ROLE,
+                started_by=os.environ.get("STARTED_BY", ""),
                 host=socket.gethostname(), pid=os.getpid(),
                 started_at=datetime.now().isoformat(timespec="seconds"),
                 user_prompt_file=USER_PROMPT_FILE,

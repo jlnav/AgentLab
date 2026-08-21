@@ -116,10 +116,13 @@ def forward(messages, me):
         if not addressed and not read_all:
             continue                      # not addressed to the agents
         text = text.replace(f"<@{me}>", "").strip()
+        # The author's Slack id travels with the message: it is what records who asked
+        # for a run, and Slack renders it as their name when it is quoted back.
+        who = f"<@{m['user']}>" if m.get("user") else "someone"
         if addressed:
-            lines.append(f"[from Slack -- reply with the notify tool] {text}")
+            lines.append(f"[from Slack -- reply with the notify tool] {who}: {text}")
         else:
-            lines.append(f"[from Slack -- overheard, not addressed to you] {text}")
+            lines.append(f"[from Slack -- overheard, not addressed to you] {who}: {text}")
     if not lines:
         return 0
     if secretary_up():

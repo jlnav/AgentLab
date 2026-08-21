@@ -12,6 +12,7 @@ export WORKSPACE_ROOT="$(cd ../workspace && pwd)"   # all campaigns
 export SLACK_WEBHOOK_FILE="${SLACK_WEBHOOK_FILE:-$HOME/.slack_webhook}"
 export NOTIFY_SCRIPT="${NOTIFY_SCRIPT:-}"
 export SLACK_PREFIX="${SLACK_PREFIX:-secretary}"   # slack_notify.sh renders this as *[secretary]*
+export STARTABLE_CAMPAIGNS="${STARTABLE_CAMPAIGNS:-}"   # campaigns the secretary may start; empty means none
 export SECRETARY_POLL="${SECRETARY_POLL:-5}"       # also how often the heartbeat the bridge reads is rewritten
 echo "[run] secretary -> campaign boards under $WORKSPACE_ROOT"
 python -u secretary.py
