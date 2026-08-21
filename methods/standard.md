@@ -53,6 +53,12 @@ decided and why.
 At the end of a run, append a closing summary to `LOGBOOK.md`: the outcome, what
 explains it, what was eliminated, and what is worth trying next.
 
+## Figures
+
+Only make a figure when it is genuinely helpful. Plot with matplotlib through
+`Bash` and save under `figures/` in the shared area, referenced from the journal entry
+with a caption saying what it shows.
+
 ## Failures
 
 Re-run work whose data is broken.
