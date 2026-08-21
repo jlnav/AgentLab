@@ -62,12 +62,9 @@ if [ -f "$LAST" ]; then
 fi
 mkdir -p "$(dirname "$LAST")" && echo "$now" > "$LAST"
 
-LOG_DIR="$LAB_DIR/workspace/$CAMPAIGN/logs"
-mkdir -p "$LOG_DIR"
-LOG="$LOG_DIR/start_$(date +%Y%m%d_%H%M%S).log"
-( cd "$LAB_DIR/campaigns/$CAMPAIGN" && setsid nohup ./run.sh > "$LOG" 2>&1 & )
+# The agent writes its own log, so this launch keeps none of its own.
+( cd "$LAB_DIR/campaigns/$CAMPAIGN" && setsid nohup ./run.sh >/dev/null 2>&1 & )
 echo "start_run: $CAMPAIGN starting -- $REASON"
-echo "start_run: log $LOG"
 
 # The handle is what a person says to address this agent, so wait for the agent to
 # publish it rather than reporting a run nobody can name yet.
@@ -81,5 +78,5 @@ for _ in $(seq 1 30); do
     exit 0
   fi
 done
-echo "start_run: started, but no handle published yet -- check $LOG" >&2
+echo "start_run: started, but no handle published yet -- check $LAB_DIR/workspace/$CAMPAIGN/logs" >&2
 exit 0
