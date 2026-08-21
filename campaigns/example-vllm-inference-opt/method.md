@@ -21,11 +21,19 @@ Each result includes a `diagnostics` block parsed from the job's own output, and
 to its full log. Read it in full on your first result and skim it on each one after.
 What it reports often locates a problem faster than another run will.
 
-## Work in rounds
+## Work in cycles
 
-A round spans several turns: you submit, end your turn, and resume when jobs finish.
-Before each round, say in one line what you are trying and why it follows from the
-results so far. Vary one thing per job, so a difference is attributable.
+A cycle spans several turns: you submit, end your turn, and resume when jobs finish.
+Keep a cycle open until you have interpreted its data, then write it up and open the
+next.
+
+1. **Hypothesize.** One concrete, falsifiable statement, naming the mechanism you think
+   is responsible, what the planned jobs will show if it holds, and what result would
+   refute it — written before you submit.
+2. **Experiment.** Submit. Vary one thing per job, so a difference is attributable.
+3. **Interpret.** What the data says, and what it rules in or out.
+
+A refuted hypothesis is a good cycle. Record it as refuted and say what it eliminates.
 
 ## Records
 
