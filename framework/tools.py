@@ -561,6 +561,33 @@ async def notify(args):
     return {"content": [{"type": "text", "text": "notified" + note}]}
 
 
+CYCLE_DONE_DESC = (
+    "Call this when you have finished writing up a cycle, after its record is written. "
+    "It marks the boundary the review runs on: the write-up you have just recorded is "
+    "checked against the results rows, and anything the rows do not support comes back "
+    "to you next turn. Pass the cycle's conclusion in one or two lines -- what it "
+    "established -- so the review knows which claims it is judging. One call per cycle."
+)
+
+_cycle_mark = None      # set by cycle_done, read and cleared by the runner
+
+
+def cycle_done_pending():
+    """The conclusion the agent recorded when it last closed a cycle, or None. Reading
+    it clears it: a cycle is reviewed once."""
+    global _cycle_mark
+    mark, _cycle_mark = _cycle_mark, None
+    return mark
+
+
+@tool("cycle_done", CYCLE_DONE_DESC, {"conclusion": str})
+async def cycle_done(args):
+    global _cycle_mark
+    _cycle_mark = (args.get("conclusion") or "").strip() or "(no conclusion given)"
+    return {"content": [{"type": "text", "text":
+                         "cycle recorded; its write-up will be reviewed"}]}
+
+
 CHECK_BACKEND_DESC = (
     "Check backend health when nothing has completed for a long time and you are unsure "
     "whether your jobs are genuinely still queued or the backend is stuck. Returns the "
@@ -607,6 +634,7 @@ def create_server():
     if HAS_LOCAL:
         tools += [submit_local, get_local_completed]
     tools.append(notify)
+    tools.append(cycle_done)
     if HAS_REMOTE:
         tools.append(check_backend)
     return create_sdk_mcp_server(name="cas", version="1.0.0", tools=tools)

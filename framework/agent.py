@@ -64,7 +64,12 @@ LOG_PATH = os.path.join(LOG_DIR, f"run_{SYSTEM}_{RUN_STAMP}.log")
 HEARTBEAT_INTERVAL = 30   # s; minimum gap between heartbeat writes during a wait
 CRITIC_MODEL = None       # resolved in preflight()
 CRITIC_LABEL = "no critic"
-JOURNAL_FILE = os.path.join(WORKSPACE_DIR, "JOURNAL.md")
+# What a cycle gets written up in depends on the method: the standard one records to
+# LOGBOOK.md and writes JOURNAL.md only at the end, the research one keeps both as it
+# goes. The critic watches both and reviews whichever grew.
+CYCLE_RECORDS = [os.path.join(WORKSPACE_DIR, name)
+                 for name in ("LOGBOOK.md", "JOURNAL.md")]
+
 AGENT_ALIVE_WITHIN = int(os.environ.get("AGENT_ALIVE_WITHIN", "300"))  # s; fresher heartbeat = agent is up
 
 
@@ -237,12 +242,28 @@ def _new_board_lines(seen, current):
     return current
 
 
-def _journal_text():
-    try:
-        with open(JOURNAL_FILE) as f:
-            return f.read()
-    except Exception:
-        return ""
+def _record_texts():
+    out = {}
+    for path in CYCLE_RECORDS:
+        try:
+            with open(path) as f:
+                out[path] = f.read()
+        except Exception:
+            out[path] = ""
+    return out
+
+
+def _new_record_text(before, after):
+    """The text added to the cycle records since the last look, ignoring a file that
+    was edited rather than appended to -- there is no clean 'new part' then."""
+    added = []
+    for path, text in after.items():
+        old = before.get(path, "")
+        if len(text) > len(old) and text.startswith(old):
+            chunk = text[len(old):].strip()
+            if chunk:
+                added.append(f"--- new in {os.path.basename(path)} ---\n{chunk}")
+    return "\n\n".join(added)
 
 
 def _recent_results(budget=120000):
@@ -587,9 +608,9 @@ async def main():
             # reaches it. Standing instructions belong in the user prompt file, which
             # IS read fresh at startup -- the board is for live messages.
             last_announcements = tools.read_announcements()
-            # Only growth from here counts: an existing journal was reviewed, or not,
-            # by whoever ran before.
-            last_journal = _journal_text()
+            # Only growth from here counts: what is already written was reviewed, or
+            # not, by whoever ran before.
+            last_records = _record_texts()
             stopping = None           # set to the reason once the run starts winding down
             finalize_rounds = 0
             for round_num in range(1, MAX_ROUNDS + 1):
@@ -619,22 +640,27 @@ async def main():
                     prompt = WINDDOWN_PROMPT
                 # A cycle write-up is the trigger: the journal gains a section, so a
                 # longer journal than last round means there is something to review.
+                # A cycle is the agent's own boundary, so the agent marks it: the
+                # runner reviews what was written since the last one, not an amount of
+                # text it guessed was enough to be a write-up.
                 if CRITIC_MODEL:
-                    journal = _journal_text()
-                    if len(journal) > len(last_journal):
-                        new_section = journal[len(last_journal):].strip()
-                        last_journal = journal
-                        if new_section:
-                            print(f"[critic] reviewing {len(new_section)} new journal "
-                                  f"chars with {CRITIC_LABEL}", flush=True)
-                            reply = critic.review(CRITIC_MODEL, new_section,
-                                                  _recent_results())
-                            if reply:
-                                _append_review(reply)
-                                found = critic.blocking(reply)
-                                print(f"[critic] {len(found)} blocking finding(s)", flush=True)
-                                if found:
-                                    prompt = _critic_prompt(found, reply, tail=prompt)
+                    conclusion = tools.cycle_done_pending()
+                    records = _record_texts()
+                    new_section = _new_record_text(last_records, records)
+                    if conclusion:
+                        last_records = records
+                        new_section = (f"The agent's stated conclusion for this cycle:\n"
+                                       f"{conclusion}\n\n{new_section}")
+                        print(f"[critic] reviewing {len(new_section)} new chars "
+                              f"with {CRITIC_LABEL}", flush=True)
+                        reply = critic.review(CRITIC_MODEL, new_section,
+                                              _recent_results())
+                        if reply:
+                            _append_review(reply)
+                            found = critic.blocking(reply)
+                            print(f"[critic] {len(found)} blocking finding(s)", flush=True)
+                            if found:
+                                prompt = _critic_prompt(found, reply, tail=prompt)
                 # Announcements board changed between rounds -> surface it first.
                 board = tools.read_announcements()
                 if board and board != last_announcements:

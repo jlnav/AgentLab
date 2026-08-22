@@ -22,6 +22,8 @@ Env:
     CRITIC_PROMPT_FILE   overrides framework/critic_prompt.md
     CRITIC_MAX_TOKENS    reply cap (default 8000; a reasoning model spends most of it
                          thinking, so a tight cap returns an empty reply)
+    CRITIC_BASE_URL      gateway serving the critic's model, if not the agent's own
+    CRITIC_API_KEY       credential for it
 """
 
 import json
@@ -34,9 +36,14 @@ MODEL_SETTING = (os.environ.get("CRITIC_MODEL") or "").strip()
 REQUIRED = (os.environ.get("CRITIC_REQUIRED", "").strip().lower()
             in ("1", "true", "yes", "on"))
 MAX_TOKENS = int(os.environ.get("CRITIC_MAX_TOKENS", "8000"))
-# The agent's own gateway. The critic goes to the same place with a different model.
-BASE_URL = (os.environ.get("ANTHROPIC_BASE_URL") or "https://api.anthropic.com").rstrip("/")
-API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+# Usually the agent's own gateway, with a different model on it. Separable because the
+# common arrangement is the reverse of that: the agent on Claude directly, and a proxy
+# standing alongside purely to reach a second family for review.
+BASE_URL = (os.environ.get("CRITIC_BASE_URL")
+            or os.environ.get("ANTHROPIC_BASE_URL")
+            or "https://api.anthropic.com").rstrip("/")
+API_KEY = (os.environ.get("CRITIC_API_KEY")
+           or os.environ.get("ANTHROPIC_API_KEY", ""))
 
 BLOCK_RE = re.compile(
     r"CLAIM:\s*(?P<claim>.+?)\n\s*VERDICT:\s*(?P<verdict>\w+).*?"

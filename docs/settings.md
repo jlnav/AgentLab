@@ -45,6 +45,8 @@ what a gateway makes available.
 | `CRITIC_MODEL` | — | model name, `auto` to pick one of a different family from what the gateway serves, or unset for no critic |
 | `CRITIC_REQUIRED` | false | refuse to start when no critic can be resolved |
 | `CRITIC_PROMPT_FILE` | `framework/critic_prompt.md` | what the critic is asked to do |
+| `CRITIC_BASE_URL` | the agent's `ANTHROPIC_BASE_URL` | gateway serving the critic, when it is not where the agent goes |
+| `CRITIC_API_KEY` | the agent's `ANTHROPIC_API_KEY` | credential for that gateway |
 | `CRITIC_MAX_TOKENS` | 8000 | cap on one review; a reasoning model spends much of it thinking |
 
 Less often changed.

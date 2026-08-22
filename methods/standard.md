@@ -35,6 +35,9 @@ next.
 
 A refuted hypothesis is a good cycle.
 
+When a cycle is finished and its record written, call `cycle_done` with what it
+established. That closes the cycle and puts the write-up up for review.
+
 ## Records
 
 Two files, both in the shared area.
