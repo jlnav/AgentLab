@@ -653,6 +653,12 @@ async def main():
                                        f"{conclusion}\n\n{new_section}")
                         print(f"[critic] reviewing {len(new_section)} new chars "
                               f"with {CRITIC_LABEL}", flush=True)
+                        if stopping:
+                            # A review takes a couple of minutes. During a wind-down
+                            # that silence looks like a hang, so say what it is waiting
+                            # for.
+                            slack_notify(f":mag: Reviewing the last cycle with "
+                                         f"{CRITIC_LABEL} before exit.")
                         reply = critic.review(CRITIC_MODEL, new_section,
                                               _recent_results())
                         if reply:

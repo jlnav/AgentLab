@@ -12,6 +12,13 @@ Open with what they will need:
 - The Claude Agent SDK, and access to an LLM service it can use.
 - Any files they already have — a script, notes, previous results.
 
+Someone with none of that, who wants to see what this does before bringing work to it,
+should be offered `campaigns/example-quick-optimum` instead: it runs on their own
+machine, needs no account and no endpoint, and finishes in minutes. Copy it to a
+campaign of their own and run it. That first run has no critic, so they see a campaign
+work end to end quickly; running it again with one shows a cycle being reviewed, and
+takes longer because the reviewing model reads the results before it answers.
+
 Then step 1, in the same message.
 
 One step per message after that: a single question or a single action, take the answer,
@@ -56,18 +63,21 @@ it stands:
 `campaigns/example-vllm-inference-opt/` has all of these to copy the shape from, and its
 README says more about each.
 
-`methods/` holds the two starting points for how the agent works. Copy one into the
+`methods/` holds the starting points for how the agent works. Copy one into the
 campaign as `method.md` — the agent reads the campaign's copy, so every campaign owns
 its own and can be changed without affecting any other:
 
 | | |
 |---|---|
+| `methods/quick.md` | a few jobs, a few lines per cycle in `LOGBOOK.md` |
 | `methods/standard.md` | runs jobs in rounds, keeps `results.jsonl` and `LOGBOOK.md` |
 | `methods/research.md` | five-step cycles, and a `JOURNAL.md`/`JOURNAL.tex` write-up per cycle with figures |
 
 Choose from what they described. Take `standard.md` unless they are investigating why
 something behaves as it does and want the reasoning recorded — a typeset report, figures
-per cycle, hypotheses written down — in which case take `research.md`. Say which you
+per cycle, hypotheses written down — in which case take `research.md`. Take `quick.md`
+for a short run whose record someone will read at a glance: trying the machinery, a
+handful of jobs, an answer rather than an account of how it was reached. Say which you
 copied and why, in a line. Then change anything in it that conflicts with what they have
 already told you, and leave the rest.
 
