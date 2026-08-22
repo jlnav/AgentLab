@@ -38,6 +38,7 @@ WORKSPACE_DIR = os.environ.get("WORKSPACE_DIR") or (
     if os.environ.get("CAMPAIGN") else SCRIPT_DIR)
 os.environ["WORKSPACE_DIR"] = WORKSPACE_DIR
 
+import critic  # noqa: E402
 import tools  # noqa: E402
 from tools import create_server, shutdown_executor  # noqa: E402
 # Campaign files (prompt.md, user prompt) live with the campaign, not the framework.
@@ -61,6 +62,9 @@ RUN_ID = f"{SYSTEM}_{ROLE}_{RUN_STAMP}" if ROLE_SET else f"{SYSTEM}_{RUN_STAMP}"
 RUN_DIR = os.path.join(WORKSPACE_DIR, "runs", RUN_ID)
 LOG_PATH = os.path.join(LOG_DIR, f"run_{SYSTEM}_{RUN_STAMP}.log")
 HEARTBEAT_INTERVAL = 30   # s; minimum gap between heartbeat writes during a wait
+CRITIC_MODEL = None       # resolved in preflight()
+CRITIC_LABEL = "no critic"
+JOURNAL_FILE = os.path.join(WORKSPACE_DIR, "JOURNAL.md")
 AGENT_ALIVE_WITHIN = int(os.environ.get("AGENT_ALIVE_WITHIN", "300"))  # s; fresher heartbeat = agent is up
 
 
@@ -231,6 +235,59 @@ def _new_board_lines(seen, current):
     if new[:len(old)] == old:
         return "\n".join(new[len(old):]).strip()
     return current
+
+
+def _journal_text():
+    try:
+        with open(JOURNAL_FILE) as f:
+            return f.read()
+    except Exception:
+        return ""
+
+
+def _recent_results(budget=120000):
+    """The rows a claim can be checked against: all of them if they fit, the most recent
+    otherwise. A slice is labelled as one -- a critic that cannot tell a missing row from
+    a missing measurement calls everything unsupported."""
+    try:
+        with open(os.path.join(WORKSPACE_DIR, "results.jsonl")) as f:
+            rows = f.readlines()
+    except Exception:
+        return ""
+    kept, size = [], 0
+    for row in reversed(rows):
+        size += len(row)
+        if size > budget and kept:
+            break
+        kept.append(row)
+    kept.reverse()
+    head = (f"({len(rows)} rows recorded; all supplied)\n" if len(kept) == len(rows)
+            else f"({len(rows)} rows recorded, the {len(kept)} most recent supplied)\n")
+    return head + "".join(kept)
+
+
+def _append_review(reply):
+    """Keep the review beside the work it judged. Notes the agent never acts on still
+    belong in the record, and a later reader can see what was checked."""
+    try:
+        with open(os.path.join(WORKSPACE_DIR, "REVIEWS.md"), "a") as f:
+            f.write(f"\n## {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} "
+                    f"-- {CRITIC_LABEL}, run {RUN_ID}\n\n{reply}\n")
+    except Exception as e:
+        print(f"[critic] could not record the review (ignored): {e}", flush=True)
+
+
+def _critic_prompt(findings, reply, tail=""):
+    """Blocking findings become the next turn's work. The agent is not told to agree:
+    a critic reading only the rows can be wrong about what the rows mean, and saying so
+    with evidence is a legitimate answer."""
+    listed = "\n".join(f"- {claim} ({verdict})" for claim, verdict in findings)
+    return (f"The critic ({CRITIC_LABEL}) reviewed your latest journal section and "
+            f"found claims it says the recorded results do not support:\n\n"
+            f"{listed}\n\nIts full review:\n\n{reply}\n\n"
+            "Deal with each one before continuing: correct the write-up, run what "
+            "would settle it, or answer the objection in the journal citing the rows "
+            "that support you.\n\n" + tail)
 
 
 def _announcements_prompt(text, tail=""):
@@ -422,6 +479,15 @@ def preflight():
         sys.exit(1)
     backend = "endpoint online" if tools.HAS_REMOTE else "local execution only"
     print(f"preflight OK: task={tools.TASK_DIR}, method.md, WORKSPACE_DIR, {backend}.", flush=True)
+    # The critic is resolved here rather than at first use: a campaign that needs its
+    # cycles reviewed should fail now, not in round twelve.
+    global CRITIC_MODEL, CRITIC_LABEL
+    try:
+        CRITIC_MODEL, CRITIC_LABEL = critic.resolve(os.environ.get("ANTHROPIC_MODEL", ""))
+    except critic.CriticUnavailable as e:
+        print(f"preflight FAILED: {e}", flush=True)
+        sys.exit(1)
+    print(f"critic: {CRITIC_LABEL}", flush=True)
 
 
 _session_id = None          # this run's Claude session, for reopening it later
@@ -510,7 +576,8 @@ async def main():
             _write_meta(model=model)
             if NOTIFY_START:
                 slack_notify(f":rocket: Agent {HANDLE} started — "
-                             f"{CAMPAIGN or 'no campaign'} on {SYSTEM}{ROLE_NOTE} · {model}.")
+                             f"{CAMPAIGN or 'no campaign'} on {SYSTEM}{ROLE_NOTE} · {model}"
+                             f" · critic {CRITIC_LABEL}.")
             prompt = load_user_prompt()
             empty_rounds = 0
             last_daily = start_time
@@ -520,6 +587,9 @@ async def main():
             # reaches it. Standing instructions belong in the user prompt file, which
             # IS read fresh at startup -- the board is for live messages.
             last_announcements = tools.read_announcements()
+            # Only growth from here counts: an existing journal was reviewed, or not,
+            # by whoever ran before.
+            last_journal = _journal_text()
             stopping = None           # set to the reason once the run starts winding down
             finalize_rounds = 0
             for round_num in range(1, MAX_ROUNDS + 1):
@@ -547,6 +617,24 @@ async def main():
                     # Replace, not prepend: whatever was queued (CONTINUE/EXPLORE) tells
                     # the agent to submit the next region, which contradicts winding down.
                     prompt = WINDDOWN_PROMPT
+                # A cycle write-up is the trigger: the journal gains a section, so a
+                # longer journal than last round means there is something to review.
+                if CRITIC_MODEL:
+                    journal = _journal_text()
+                    if len(journal) > len(last_journal):
+                        new_section = journal[len(last_journal):].strip()
+                        last_journal = journal
+                        if new_section:
+                            print(f"[critic] reviewing {len(new_section)} new journal "
+                                  f"chars with {CRITIC_LABEL}", flush=True)
+                            reply = critic.review(CRITIC_MODEL, new_section,
+                                                  _recent_results())
+                            if reply:
+                                _append_review(reply)
+                                found = critic.blocking(reply)
+                                print(f"[critic] {len(found)} blocking finding(s)", flush=True)
+                                if found:
+                                    prompt = _critic_prompt(found, reply, tail=prompt)
                 # Announcements board changed between rounds -> surface it first.
                 board = tools.read_announcements()
                 if board and board != last_announcements:

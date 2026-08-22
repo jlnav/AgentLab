@@ -36,6 +36,17 @@ Slack and notification. Without `SLACK_WEBHOOK_FILE` these do nothing.
 | `NOTIFY_FINISH` | true | post when a launch ends |
 | `NOTIFY_PROBLEM_GRACE` | 1800 | seconds after the agent flags a blocker before shutting down |
 
+The critic, a second model that checks each cycle's write-up against the recorded
+results. Resolved once at preflight and named in the startup post; `docs/llm.md` covers
+what a gateway makes available.
+
+| | default | |
+|---|---|---|
+| `CRITIC_MODEL` | — | model name, `auto` to pick one of a different family from what the gateway serves, or unset for no critic |
+| `CRITIC_REQUIRED` | false | refuse to start when no critic can be resolved |
+| `CRITIC_PROMPT_FILE` | `framework/critic_prompt.md` | what the critic is asked to do |
+| `CRITIC_MAX_TOKENS` | 8000 | cap on one review; a reasoning model spends much of it thinking |
+
 Less often changed.
 
 | | default | |
