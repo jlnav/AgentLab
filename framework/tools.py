@@ -572,10 +572,10 @@ async def notify(args):
 
 CYCLE_DONE_DESC = (
     "Call this when you have finished writing up a cycle, after its record is written. "
-    "It marks the boundary the review runs on: the write-up you have just recorded is "
-    "checked against the results rows, and anything the rows do not support comes back "
-    "to you next turn. Pass the cycle's conclusion in one or two lines -- what it "
-    "established -- so the review knows which claims it is judging. One call per cycle."
+    "Pass the cycle's conclusion in one or two lines -- what it established. It marks "
+    "the boundary of the cycle in the record. Where this lab runs a reviewer, that "
+    "boundary is where it reads: your write-up is checked against the results rows, and "
+    "anything they do not support comes back to you next turn. One call per cycle."
 )
 
 _cycle_mark = None      # set by cycle_done, read and cleared by the runner
