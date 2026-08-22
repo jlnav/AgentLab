@@ -22,6 +22,13 @@ collects what is in flight, writes up, and exits.
 | `CAS_STALL_LIMIT` | unset | seconds with nothing completing before giving up; unset means wait |
 | `CAS_REMOTE_TIMEOUT` | 43200 | seconds to wait on one remote job |
 | `CAS_LOCAL_TIMEOUT` | 14400 | seconds to wait on one local job, where a task defines one |
+| `MAX_CONCURRENT` | `max_concurrent` in campaign.json, else the system file, else 1 | remote jobs in flight at once |
+| `LOCAL_MAX_CONCURRENT` | `local_max_concurrent` in campaign.json, else the system file, else 1 | local jobs at once; one by default, since a local job is assumed to use the whole machine |
+
+Both follow the same order — environment, campaign, system, default. The system file
+carries a site default, conservative because queue policy and an allocation bound it as
+much as the hardware does; a campaign overrides it, because how many jobs are sensible
+depends on what one job does.
 
 Slack and notification. Without `SLACK_WEBHOOK_FILE` these do nothing.
 

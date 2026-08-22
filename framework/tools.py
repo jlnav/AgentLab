@@ -92,7 +92,12 @@ else:
     _usr.setdefault("work_dir", os.path.join(LAB_DIR, "workspace", CAMPAIGN))
 
 ENDPOINT_ID = _usr.get("endpoint", "")
-MAX_CONCURRENT = int(_sys_cfg.get("max_concurrent", 1))   # remote jobs running/queued at once
+# How many jobs may be in flight at once. The system file holds a site default, bounded
+# by queue policy and allocation rather than by the size of the machine; a campaign
+# overrides it, because what is sensible depends on what one job does.
+MAX_CONCURRENT = int(os.environ.get("MAX_CONCURRENT",
+                                    _cam.get("max_concurrent",
+                                             _sys_cfg.get("max_concurrent", 1))))
 
 # Named resource shapes on one system (e.g. a small quick queue and a large long one).
 # A task may route a job to one; otherwise the default is used.
@@ -118,7 +123,11 @@ TARGET["nranks"] = _SYS["buckets"][_default_bucket].get("num_nodes", 1) * TARGET
 
 REMOTE_TIMEOUT = int(os.environ.get("CAS_REMOTE_TIMEOUT", "43200"))   # 12h client-side wait
 LOCAL_TIMEOUT = int(os.environ.get("CAS_LOCAL_TIMEOUT", "14400"))     # 4h
-LOCAL_MAX_CONCURRENT = 1   # a local job is assumed to use the whole node
+# The same, for jobs run on this machine. One by default: a local job is assumed to use
+# the whole thing, and a task whose jobs are small enough to share it says so.
+LOCAL_MAX_CONCURRENT = int(os.environ.get("LOCAL_MAX_CONCURRENT",
+                                          _cam.get("local_max_concurrent",
+                                                   _sys_cfg.get("local_max_concurrent", 1))))
 
 # One Executor per bucket, created lazily and reused. Each distinct user_endpoint_config
 # gets its own block pool on the endpoint, so buckets can run concurrently.

@@ -32,11 +32,11 @@ next.
    refute it — written before you submit.
 2. **Experiment.** Submit. Vary one thing per job, so a difference is attributable.
 3. **Interpret.** What the data says.
+4. **Close.** Write the cycle up, then call `cycle_done` with what it established. The
+   write-up is reviewed against the recorded rows, and anything they do not support
+   comes back to you before you open the next cycle.
 
 A refuted hypothesis is a good cycle.
-
-When a cycle is finished and its record written, call `cycle_done` with what it
-established. That closes the cycle and puts the write-up up for review.
 
 ## Records
 
