@@ -1,8 +1,8 @@
 # Slack
 
 A campaign posts its status, milestones and alerts to a Slack channel, and messages sent
-back reach a running campaign so it can be steered mid-run. Optional, and it can be added
-at any time.
+back reach the secretary, which answers them and steers running campaigns on their
+behalf. Optional, and it can be added at any time.
 
 ## The pieces
 
@@ -68,6 +68,16 @@ to that campaign's board addressed to one agent:
 
 An unaddressed line is answered by every agent reading that board, which is why a
 relay always names its reader.
+
+It can also start and stop runs, for campaigns named in `SLACK_CAMPAIGNS`:
+`framework/start_run.sh <campaign>` and `framework/stop_run.sh <handle>`. Both refuse
+anything not on that list; a start also refuses a campaign that already has a live
+agent or was started within `START_COOLDOWN`, and a stop always drains. A request made
+without mentioning the bot is confirmed in the channel before either runs.
+
+Each running agent posts under a short handle — `local1`, `vllm2` — unique across the
+lab, which is what a person types to address or stop it. The exact run it belongs to is
+in `list_agents.sh`, alongside the Claude session id for reading a finished run back.
 
 ## Where things run
 

@@ -28,7 +28,7 @@ Slack and notification. Without `SLACK_WEBHOOK_FILE` these do nothing.
 | | default | |
 |---|---|---|
 | `SLACK_WEBHOOK_FILE` | `~/.slack_webhook` | incoming webhook for outbound posts |
-| `SLACK_PREFIX` | `<campaign>/<system>-<role>` | prepended to every post, so one channel carrying several campaigns stays readable |
+| `SLACK_PREFIX` | the agent's handle | prepended to every post, so one channel carrying several campaigns stays readable |
 | `NOTIFY_SCRIPT` | `framework/slack_notify.sh` | the script that posts a message; another transport's script goes here |
 | `NOTIFY_START` | false | post when a launch starts |
 | `NOTIFY_DAILY` | true | periodic status post |

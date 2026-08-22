@@ -204,8 +204,9 @@ which queue, and where they have writable space.
 
 ## Slack
 
-A campaign posts its status, milestones and alerts to Slack, and messages sent back
-reach a running agent through the announcements board. It can be added at any time.
+A campaign posts its status, milestones and alerts to Slack. Messages sent back reach
+the secretary, which answers them, relays what needs a running agent's own reasoning,
+and starts or stops the campaigns the lab has allowed. It can be added at any time.
 
 Ask first whether they are **setting up a lab** or **joining one**. The work is almost
 entirely on the first.
@@ -236,21 +237,25 @@ wait, carry on:
 
    That copy is not tracked by git. `docs/settings.md` lists every setting it can hold.
 
+   Ask which campaigns, if any, may be started and stopped from Slack, and name them in
+   `SLACK_CAMPAIGNS`. A campaign not named there can be neither started nor stopped
+   however the request is phrased.
+
    Ask which way they want to reach the agents. By default a message has to mention the
    bot. With `SLACK_READ_ALL=true` the secretary is given every message in the channel
    and decides which are for it, so a question can be asked in passing; it costs a
    secretary turn per message, and the mention rule comes back whenever the secretary
    is not running.
 
-5. Run the bridge, which forwards channel messages onto the announcements board so
-   people can steer running campaigns:
+5. Run the bridge, which delivers channel messages to the secretary, or to the
+   campaign boards when the secretary is not running:
 
    ```
    framework/run_slack_bridge.sh
    ```
 
 6. Run the secretary, which answers questions from the recorded results so campaigns
-   are not interrupted to reply:
+   are not interrupted to reply, and starts and stops runs on request:
 
    ```
    framework/run_secretary.sh
@@ -272,8 +277,13 @@ cd campaigns/<name> && ./run.sh
 
 ```
 framework/list_agents.sh --all          every run and its outcome
+framework/list_agents.sh -n 5           the last five runs
 framework/kill_agent.sh --drain <run>   stop cleanly, finishing jobs in flight
 ```
+
+A running agent has a short handle — `local1` — which is what it posts under in Slack
+and what a person calls it. A finished run keeps the Claude session it ran in, shown by
+`list_agents.sh`, so `claude -r <session>` reads back what the agent was thinking.
 
 Stopping conditions, Slack and the rest live in the campaign's `run.sh`. Every setting,
 with its default, is in `docs/settings.md`.
