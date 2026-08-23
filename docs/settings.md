@@ -34,6 +34,8 @@ Slack and notification. Without `SLACK_WEBHOOK_FILE` these do nothing.
 
 | | default | |
 |---|---|---|
+| `WATCH` | false | serve this run for a browser at `http://127.0.0.1:<WATCH_PORT>/` — its log as it is written, and the files it writes |
+| `WATCH_PORT` | 8765 | port the viewer listens on, so two runs can be watched at once |
 | `SLACK_WEBHOOK_FILE` | `~/.slack_webhook` | incoming webhook for outbound posts |
 | `SLACK_PREFIX` | the agent's handle | prepended to every post, so one channel carrying several campaigns stays readable |
 | `NOTIFY_SCRIPT` | `framework/slack_notify.sh` | the script that posts a message; another transport's script goes here |

@@ -211,6 +211,9 @@ def backend_trouble():
 
 
 def _append_jobs_log(record):
+    # The run that fired it: the log accumulates across every run of a campaign, so
+    # without this there is no way to say what this run did.
+    record = {"run": os.environ.get("RUN_ID", ""), **record}
     try:
         with open(JOBS_LOG, "a") as f:
             f.write(json.dumps(record) + "\n")

@@ -60,6 +60,7 @@ USER_PROMPT_FILE = os.environ.get("USER_PROMPT_FILE", "user_prompt.md")
 RUN_STAMP = datetime.now().strftime("%Y%m%d_%H%M%S")
 RUN_ID = f"{SYSTEM}_{ROLE}_{RUN_STAMP}" if ROLE_SET else f"{SYSTEM}_{RUN_STAMP}"
 RUN_DIR = os.path.join(WORKSPACE_DIR, "runs", RUN_ID)
+os.environ["RUN_ID"] = RUN_ID      # tools stamps the job log with it
 LOG_PATH = os.path.join(LOG_DIR, f"run_{SYSTEM}_{RUN_STAMP}.log")
 HEARTBEAT_INTERVAL = 30   # s; minimum gap between heartbeat writes during a wait
 CRITIC_MODEL = None       # resolved in preflight()
@@ -169,6 +170,12 @@ STALL_LIMIT = int(os.environ["CAS_STALL_LIMIT"]) if os.environ.get("CAS_STALL_LI
 def _bool_env(name, default=False):
     v = os.environ.get(name)
     return default if v is None else v.strip().lower() in ("1", "true", "yes", "on")
+
+# A browser view of this run: the log as it is written and the files it writes. Off
+# unless asked for, and it never affects the run -- it only reads the workspace.
+WATCH = _bool_env("WATCH", False)
+WATCH_PORT = int(os.environ.get("WATCH_PORT", "8765"))
+_watcher = None           # the viewer process, stopped when the run ends
 
 NOTIFY_START = _bool_env("NOTIFY_START", False)
 NOTIFY_DAILY = _bool_env("NOTIFY_DAILY", True)
@@ -366,6 +373,31 @@ def load_user_prompt():
 # run history. Liveness is the heartbeat file inside it, not the dir existing.
 # The stop file also lives here, so it is scoped to this run: a restart gets a fresh
 # dir and can never inherit a stale stop request.
+def _start_watcher():
+    """Serve this run for a browser, if asked. Failing to start one is not a reason to
+    lose a run, so a failure is reported and the run carries on."""
+    global _watcher
+    if not WATCH:
+        return
+    try:
+        _watcher = subprocess.Popen(
+            [sys.executable, os.path.join(SCRIPT_DIR, "watch.py"), CAMPAIGN,
+             "--port", str(WATCH_PORT), "--no-open"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        print(f"watch: http://127.0.0.1:{WATCH_PORT}/", flush=True)
+    except Exception as e:
+        print(f"[watch] could not start the viewer (ignored): {e}", flush=True)
+
+
+def _stop_watcher():
+    if _watcher is None:
+        return
+    try:
+        _watcher.terminate()
+    except Exception:
+        pass
+
+
 def _write_meta(**updates):
     """Merge fields into this run's meta.json. Best-effort: never breaks a run."""
     path = os.path.join(RUN_DIR, "meta.json")
@@ -411,7 +443,12 @@ def _start_run_dir():
             shutil.copy2(path, os.path.join(RUN_DIR, name))
         except Exception as e:
             print(f"[run] could not snapshot {name} (ignored): {e}", flush=True)
-    _write_meta(run_id=RUN_ID, handle=HANDLE, system=SYSTEM, role=ROLE,
+    # The budgets this run stops at, recorded so anything reading the run -- a watcher,
+    # a later reader -- can say how far through it is without knowing the environment
+    # it was launched in.
+    _write_meta(max_submits=tools.MAX_SUBMITS, max_runtime_s=MAX_RUNTIME,
+                max_rounds=MAX_ROUNDS, critic=CRITIC_LABEL,
+                run_id=RUN_ID, handle=HANDLE, system=SYSTEM, role=ROLE,
                 started_by=os.environ.get("STARTED_BY", ""),
                 host=socket.gethostname(), pid=os.getpid(),
                 started_at=datetime.now().isoformat(timespec="seconds"),
@@ -509,6 +546,7 @@ def preflight():
         print(f"preflight FAILED: {e}", flush=True)
         sys.exit(1)
     print(f"critic: {CRITIC_LABEL}", flush=True)
+    _start_watcher()
 
 
 _session_id = None          # this run's Claude session, for reopening it later
@@ -810,6 +848,7 @@ async def main():
                          f"uptime {_fmt_uptime(time.time() - start_time)}.")
         shutdown_executor()
         print("Executor shut down.", flush=True)
+        _stop_watcher()
 
 
 if __name__ == "__main__":

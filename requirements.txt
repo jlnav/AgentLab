@@ -3,3 +3,6 @@ globus-compute-sdk
 # Optional: only if your task or figures need them.
 # matplotlib
 # mpi4py
+
+# Optional: rendered records in the run viewer (framework/watch.sh).
+markdown
