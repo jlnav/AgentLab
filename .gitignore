@@ -20,3 +20,6 @@ scratch/
 # Lab messaging settings: channel IDs, credential paths.
 notifiers/*
 !notifiers/*.template
+
+# This installation's own settings: gateways, credentials, what is available here.
+lab.env

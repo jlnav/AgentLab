@@ -19,16 +19,23 @@ than one you knew you did not have.
 Env:
     CRITIC_MODEL         model name, `auto`, or unset for no critic
     CRITIC_REQUIRED      1/true to refuse to start when no critic can be resolved
-    CRITIC_PROMPT_FILE   overrides framework/critic_prompt.md
+    CRITIC_LEVEL         full (every claim) or light (only claims resting on a number)
+    CRITIC_PROMPT_FILE   a prompt of your own, instead of either
     CRITIC_MAX_TOKENS    reply cap (default 8000; a reasoning model spends most of it
                          thinking, so a tight cap returns an empty reply)
     CRITIC_BASE_URL      gateway serving the critic's model, if not the agent's own
-    CRITIC_API_KEY       credential for it
+    CRITIC_API_KEY       credential for it, or CRITIC_API_KEY_FILE holding one
+    CRITIC_GATEWAY_START command that starts that gateway, when the lab runs one of its
+                         own (see docs/llm.md). Used only if it is not already up
+    CRITIC_GATEWAY_WAIT  seconds to wait for it to answer (default 60)
 """
 
 import json
 import os
 import re
+import shlex
+import subprocess
+import time
 import urllib.request
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -42,8 +49,50 @@ MAX_TOKENS = int(os.environ.get("CRITIC_MAX_TOKENS", "8000"))
 BASE_URL = (os.environ.get("CRITIC_BASE_URL")
             or os.environ.get("ANTHROPIC_BASE_URL")
             or "https://api.anthropic.com").rstrip("/")
-API_KEY = (os.environ.get("CRITIC_API_KEY")
-           or os.environ.get("ANTHROPIC_API_KEY", ""))
+def _claude_key():
+    """Whatever Claude Code itself authenticates with. A lab reaching a second model
+    usually reaches it through the same gateway the agent uses, with the same
+    credential, and that credential is already configured -- asking a person to write
+    it out again invites a second, staler copy of it."""
+    cfg = os.path.join(os.path.expanduser(os.environ.get("CLAUDE_CONFIG_DIR", "~/.claude")),
+                       "settings.json")
+    try:
+        with open(cfg) as f:
+            settings = json.load(f)
+    except Exception:
+        return ""
+    key = (settings.get("env") or {}).get("ANTHROPIC_API_KEY")
+    if key:
+        return key
+    helper = settings.get("apiKeyHelper")
+    if helper:
+        try:
+            out = subprocess.run(helper, shell=True, capture_output=True, text=True,
+                                 timeout=15)
+            return out.stdout.strip()
+        except Exception as e:
+            print(f"[critic] apiKeyHelper failed (ignored): {e}", flush=True)
+    return ""
+
+
+def _key():
+    """The critic's credential, in the order that needs the least of anyone: one given
+    for the critic, a file holding one, the agent's own from the environment, or what
+    Claude Code is already configured to use."""
+    path = (os.environ.get("CRITIC_API_KEY_FILE") or "").strip()
+    if path:
+        try:
+            with open(os.path.expanduser(path)) as f:
+                return f.read().strip()
+        except OSError as e:
+            print(f"[critic] cannot read CRITIC_API_KEY_FILE ({e}); "
+                  "falling back", flush=True)
+    return (os.environ.get("CRITIC_API_KEY")
+            or os.environ.get("ANTHROPIC_API_KEY")
+            or _claude_key())
+
+
+API_KEY = _key()
 
 BLOCK_RE = re.compile(
     r"CLAIM:\s*(?P<claim>.+?)\n\s*VERDICT:\s*(?P<verdict>\w+).*?"
@@ -55,9 +104,50 @@ class CriticUnavailable(Exception):
 
 
 def _prompt_text():
-    path = os.environ.get("CRITIC_PROMPT_FILE") or os.path.join(SCRIPT_DIR, "critic_prompt.md")
-    with open(path) as f:
-        return f.read()
+    """What the critic is asked to do. The level picks how much of a write-up is in
+    scope: everything it asserts, or only what a recorded number can settle."""
+    level = (os.environ.get("CRITIC_LEVEL") or "full").strip().lower()
+    path = (os.environ.get("CRITIC_PROMPT_FILE")
+            or os.path.join(SCRIPT_DIR, f"critic_prompt_{level}.md"))
+    try:
+        with open(path) as f:
+            return f.read()
+    except OSError as e:
+        raise CriticUnavailable(
+            f"no critic prompt at {path} (CRITIC_LEVEL={level}): {e}")
+
+
+def gateway_up():
+    """Whether the critic's gateway answers. Cheap, and the only thing worth asking
+    before starting one."""
+    try:
+        urllib.request.urlopen(BASE_URL + "/health/liveliness", timeout=5).read()
+        return True
+    except Exception:
+        return bool(_served_models())
+
+
+def ensure_gateway():
+    """Start the lab's model gateway if a critic was asked for and nothing is serving.
+
+    A proxy is a lab's own thing -- its path, its config, its port -- so the lab says
+    how to start it and this only decides whether it needs starting. Returns a line
+    about what happened, or None when there was nothing to do."""
+    start = (os.environ.get("CRITIC_GATEWAY_START") or "").strip()
+    if not MODEL_SETTING or not start or gateway_up():
+        return None
+    wait = int(os.environ.get("CRITIC_GATEWAY_WAIT", "60"))
+    try:
+        subprocess.Popen(shlex.split(start), start_new_session=True,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except Exception as e:
+        return f"could not start the critic gateway (ignored): {e}"
+    for _ in range(wait):
+        time.sleep(1)
+        if gateway_up():
+            return f"started the critic gateway at {BASE_URL}"
+    return (f"started the critic gateway but {BASE_URL} did not answer within "
+            f"{wait}s; continuing without it")
 
 
 def _served_models():

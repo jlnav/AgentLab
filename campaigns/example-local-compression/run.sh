@@ -11,7 +11,9 @@ cd "$(dirname "$0")"
 # source "$HOME/miniconda3/etc/profile.d/conda.sh" && conda activate agentlab
 export PATH="$HOME/.local/bin:$PATH"
 
-# Settings and defaults: docs/settings.md
+# What this installation has available -- model gateways, credentials. Anything below
+# overrides it, since a campaign knows its own needs. Settings: docs/settings.md
+. ../../framework/lab_env.sh
 export CAMPAIGN="$(basename "$PWD")"
 export USER_NAME="${USER_NAME:-$USER}"
 

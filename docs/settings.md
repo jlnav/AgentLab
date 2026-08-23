@@ -54,9 +54,13 @@ what a gateway makes available.
 |---|---|---|
 | `CRITIC_MODEL` | — | model name, `auto` to pick one of a different family from what the gateway serves, or unset for no critic |
 | `CRITIC_REQUIRED` | false | refuse to start when no critic can be resolved |
-| `CRITIC_PROMPT_FILE` | `framework/critic_prompt.md` | what the critic is asked to do |
+| `CRITIC_LEVEL` | full | `full` judges every claim; `light` only those resting on a recorded number, which suits short runs |
+| `CRITIC_PROMPT_FILE` | `framework/critic_prompt_<level>.md` | a prompt of your own, instead of either level |
 | `CRITIC_BASE_URL` | the agent's `ANTHROPIC_BASE_URL` | gateway serving the critic, when it is not where the agent goes |
-| `CRITIC_API_KEY` | the agent's `ANTHROPIC_API_KEY` | credential for that gateway |
+| `CRITIC_API_KEY` | the agent's `ANTHROPIC_API_KEY`, else what Claude Code is configured with (`settings.json`, including `apiKeyHelper`) | credential for that gateway |
+| `CRITIC_API_KEY_FILE` | — | a file holding that credential instead, as `SLACK_WEBHOOK_FILE` does |
+| `CRITIC_GATEWAY_START` | — | command that starts the lab's model gateway, run at preflight only when a critic was asked for and nothing is already serving |
+| `CRITIC_GATEWAY_WAIT` | 60 | seconds to wait for that gateway to answer before carrying on without it |
 | `CRITIC_MAX_TOKENS` | 8000 | cap on one review; a reasoning model spends much of it thinking |
 
 Less often changed.

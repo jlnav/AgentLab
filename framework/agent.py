@@ -409,15 +409,23 @@ def _start_watcher():
     if not WATCH:
         return
     try:
+        # Find the free port here rather than letting the viewer shift to one, so the
+        # address printed is the address it is on.
+        port = WATCH_PORT
+        for candidate in range(WATCH_PORT, WATCH_PORT + 20):
+            with socket.socket() as probe:
+                if probe.connect_ex(("127.0.0.1", candidate)) != 0:
+                    port = candidate
+                    break
         # Its own log, so a viewer that fails to start says why instead of vanishing.
+        # Preflight runs before the run directory exists, so make it.
+        os.makedirs(RUN_DIR, exist_ok=True)
         watch_log = open(os.path.join(RUN_DIR, "watch.log"), "w")
         _watcher = subprocess.Popen(
             [sys.executable, os.path.join(SCRIPT_DIR, "watch.py"), CAMPAIGN,
-             "--port", str(WATCH_PORT), "--no-open",
-             f"--exit-when-idle={WATCH_IDLE}"],
+             "--port", str(port), "--no-open", f"--exit-when-idle={WATCH_IDLE}"],
             stdout=watch_log, stderr=subprocess.STDOUT)
-        print(f"watch: http://127.0.0.1:{WATCH_PORT}/ "
-              f"(port may differ if taken -- see {RUN_DIR}/watch.log)", flush=True)
+        print(f"watch: http://127.0.0.1:{port}/", flush=True)
     except Exception as e:
         print(f"[watch] could not start the viewer (ignored): {e}", flush=True)
 
@@ -572,6 +580,9 @@ def preflight():
     # The critic is resolved here rather than at first use: a campaign that needs its
     # cycles reviewed should fail now, not in round twelve.
     global CRITIC_MODEL, CRITIC_LABEL
+    note = critic.ensure_gateway()
+    if note:
+        print(f"critic: {note}", flush=True)
     try:
         CRITIC_MODEL, CRITIC_LABEL = critic.resolve(os.environ.get("ANTHROPIC_MODEL", ""))
     except critic.CriticUnavailable as e:
@@ -690,6 +701,9 @@ async def main():
             # Only growth from here counts: what is already written was reviewed, or
             # not, by whoever ran before.
             last_records = _record_texts()
+            # Set while the agent is dealing with findings, so its answer to them is
+            # not itself put up for review.
+            answering_critic = False
             stopping = None           # set to the reason once the run starts winding down
             finalize_rounds = 0
             for round_num in range(1, MAX_ROUNDS + 1):
@@ -723,7 +737,11 @@ async def main():
                 # A cycle is the agent's own boundary, so the agent marks it: the
                 # runner reviews what was written since the last one, not an amount of
                 # text it guessed was enough to be a write-up.
-                if CRITIC_MODEL:
+                # Every closed cycle is reviewed, winding down included -- that is
+                # often where the conclusions are written. What is not reviewed is a
+                # write-up produced in answer to findings: reviewing that reviews the
+                # corrections, which produces more corrections.
+                if CRITIC_MODEL and not answering_critic:
                     conclusion = tools.cycle_done_pending()
                     records = _record_texts()
                     new_section = _new_record_text(last_records, records)
@@ -746,6 +764,7 @@ async def main():
                             _append_review(reply)
                             found = critic.blocking(reply)
                             print(f"[critic] {len(found)} blocking finding(s)", flush=True)
+                            answering_critic = bool(found)
                             if found:
                                 prompt = _critic_prompt(found, reply, tail=prompt)
                 # Announcements board changed between rounds -> surface it first.
@@ -758,6 +777,12 @@ async def main():
                 submits_before = tools.submit_count()
                 await client.query(prompt)
                 await drain_turn(client, round_num)
+                if answering_critic:
+                    # That turn was the answer; take its write-up as read and review
+                    # what comes after it.
+                    last_records = _record_texts()
+                    tools.cycle_done_pending()
+                    answering_critic = False
                 # A long run fills its context, and how full it is decides whether it
                 # can keep going. Recorded each turn so a watcher can show it.
                 u = await _context_usage(client) or {}

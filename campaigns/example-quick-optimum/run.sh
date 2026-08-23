@@ -11,7 +11,9 @@ cd "$(dirname "$0")"
 # source "$HOME/miniconda3/etc/profile.d/conda.sh" && conda activate agentlab
 export PATH="$HOME/.local/bin:$PATH"
 
-# Settings and defaults: docs/settings.md
+# What this installation has available -- model gateways, credentials. Anything below
+# overrides it, since a campaign knows its own needs. Settings: docs/settings.md
+. ../../framework/lab_env.sh
 export CAMPAIGN="$(basename "$PWD")"
 export USER_NAME="${USER_NAME:-$USER}"
 
@@ -29,6 +31,9 @@ export MAX_RUNTIME=900
 #
 # docs/llm.md covers what serves the second model.
 export CRITIC_MODEL="${CRITIC_MODEL:-}"
+# When there is a critic: judge the numbers, not everything the write-up says. A short
+# run says a lot that no recorded row can settle.
+export CRITIC_LEVEL="${CRITIC_LEVEL:-light}"
 
 export NOTIFY_START="${NOTIFY_START:-true}"
 export NOTIFY_DAILY="${NOTIFY_DAILY:-false}"
