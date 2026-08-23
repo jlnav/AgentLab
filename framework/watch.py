@@ -21,6 +21,7 @@ import http.server
 import json
 import os
 import re
+import threading
 import time
 import sys
 import urllib.parse
@@ -381,8 +382,14 @@ def _render(text):
 class Handler(http.server.BaseHTTPRequestHandler):
     campaign = ""
 
+    last_request = 0.0      # for --exit-when-idle: a page open polls constantly
+
     def log_message(self, *a):
         pass            # a watcher that narrates its own requests is noise
+
+    def handle_one_request(self):
+        type(self).last_request = time.time()
+        super().handle_one_request()
 
     def _send(self, body, ctype="text/plain; charset=utf-8"):
         data = body.encode() if isinstance(body, str) else body
@@ -491,12 +498,39 @@ def main():
         sys.exit(f"no workspace at {ws} -- has this campaign run?")
 
     Handler.campaign = campaign
-    server = http.server.ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    # Another campaign may already be watched here, so take the next free port rather
+    # than dying on the one that was asked for.
+    for candidate in range(port, port + 20):
+        try:
+            server = http.server.ThreadingHTTPServer(("127.0.0.1", candidate), Handler)
+            port = candidate
+            break
+        except OSError:
+            continue
+    else:
+        sys.exit(f"no free port between {port} and {port + 19}")
     url = f"http://127.0.0.1:{port}/"
     print(f"watching {campaign} at {url}  (Ctrl-C to stop; the run is unaffected)",
           flush=True)
     if "--no-open" not in sys.argv:
         webbrowser.open(url)
+    # An open page polls every second or so, so a long silence means nobody is looking.
+    # That, rather than the end of the run, is when this has nothing left to serve.
+    idle = 0
+    for a in sys.argv:
+        if a.startswith("--exit-when-idle="):
+            idle = int(a.split("=", 1)[1])
+    if idle:
+        Handler.last_request = time.time()
+
+        def _reap():
+            while time.time() - Handler.last_request < idle:
+                time.sleep(5)
+            span = f"{idle // 60} minutes" if idle >= 120 else f"{idle} seconds"
+            print(f"nobody has looked for {span}; stopping.", flush=True)
+            server.shutdown()
+
+        threading.Thread(target=_reap, daemon=True).start()
     try:
         server.serve_forever()
     except KeyboardInterrupt:

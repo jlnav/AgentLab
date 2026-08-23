@@ -176,6 +176,9 @@ def _bool_env(name, default=False):
 # unless asked for, and it never affects the run -- it only reads the workspace.
 WATCH = _bool_env("WATCH", False)
 WATCH_PORT = int(os.environ.get("WATCH_PORT", "8765"))
+# The viewer outlives the run -- the end of a run is when its records are worth reading
+# -- and stops itself once nobody has looked for this long.
+WATCH_IDLE = int(os.environ.get("WATCH_IDLE", "600"))
 _watcher = None           # the viewer process, stopped when the run ends
 
 NOTIFY_START = _bool_env("NOTIFY_START", False)
@@ -406,22 +409,25 @@ def _start_watcher():
     if not WATCH:
         return
     try:
+        # Its own log, so a viewer that fails to start says why instead of vanishing.
+        watch_log = open(os.path.join(RUN_DIR, "watch.log"), "w")
         _watcher = subprocess.Popen(
             [sys.executable, os.path.join(SCRIPT_DIR, "watch.py"), CAMPAIGN,
-             "--port", str(WATCH_PORT), "--no-open"],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        print(f"watch: http://127.0.0.1:{WATCH_PORT}/", flush=True)
+             "--port", str(WATCH_PORT), "--no-open",
+             f"--exit-when-idle={WATCH_IDLE}"],
+            stdout=watch_log, stderr=subprocess.STDOUT)
+        print(f"watch: http://127.0.0.1:{WATCH_PORT}/ "
+              f"(port may differ if taken -- see {RUN_DIR}/watch.log)", flush=True)
     except Exception as e:
         print(f"[watch] could not start the viewer (ignored): {e}", flush=True)
 
 
 def _stop_watcher():
+    """Left running on purpose: the end of a run is when its records are worth reading,
+    and the viewer stops itself once nobody has looked for a while."""
     if _watcher is None:
         return
-    try:
-        _watcher.terminate()
-    except Exception:
-        pass
+    print("watch: still serving; it stops itself when nobody is looking", flush=True)
 
 
 def _write_meta(**updates):
