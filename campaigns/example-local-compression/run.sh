@@ -15,8 +15,8 @@ export PATH="$HOME/.local/bin:$PATH"
 export CAMPAIGN="$(basename "$PWD")"
 export USER_NAME="${USER_NAME:-$USER}"
 
-export CAS_MAX_SUBMITS=12
-export CAS_MAX_RUNTIME=1800
+export MAX_SUBMITS=12
+export MAX_RUNTIME=1800
 
 export NOTIFY_START=false
 export NOTIFY_DAILY=false

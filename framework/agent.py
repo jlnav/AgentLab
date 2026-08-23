@@ -161,10 +161,10 @@ FINALIZE_PROMPT = (
 )
 MAX_ROUNDS = 500          # backstop against a runaway loop
 MAX_EMPTY_ROUNDS = 3      # consecutive idle rounds (no work proposed) before giving up
-MAX_RUNTIME = int(os.environ["CAS_MAX_RUNTIME"]) if os.environ.get("CAS_MAX_RUNTIME") else None  # total agent wallclock (s); None = no time limit
+MAX_RUNTIME = int(os.environ["MAX_RUNTIME"]) if os.environ.get("MAX_RUNTIME") else None  # total agent wallclock (s); None = no time limit
 WAIT_TIMEOUT = 1800       # s between "still-alive" logs / backend-health checks during a wait
 ANNOUNCE_POLL = int(os.environ.get("ANNOUNCE_POLL", "2"))   # s between announcement-board checks during a job wait
-STALL_LIMIT = int(os.environ["CAS_STALL_LIMIT"]) if os.environ.get("CAS_STALL_LIMIT") else None  # None = wait indefinitely (HPC queues can take many hours); set seconds to cap (tests do)
+STALL_LIMIT = int(os.environ["STALL_LIMIT"]) if os.environ.get("STALL_LIMIT") else None  # None = wait indefinitely (HPC queues can take many hours); set seconds to cap (tests do)
 
 # --- Slack notifications (optional; see SLACK_NOTIFY.md). Missing webhook/script
 # or a failed post is ignored so a run is never affected. ---
@@ -806,7 +806,7 @@ async def main():
                 # open client stays serviced. A pending job may sit in the Polaris
                 # queue for MANY hours -- that is normal -- so by default we wait
                 # indefinitely while a job is genuinely queued/running. A cap
-                # (CAS_STALL_LIMIT) is applied only if explicitly set (tests set one).
+                # (STALL_LIMIT) is applied only if explicitly set (tests set one).
                 stalled = 0
                 since_tick = 0
                 backend_problem = None

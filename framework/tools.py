@@ -121,8 +121,8 @@ TARGET["work_dir"] = _usr["work_dir"]
 TARGET.setdefault("ppn", _sys_cfg.get("ppn", 1))
 TARGET["nranks"] = _SYS["buckets"][_default_bucket].get("num_nodes", 1) * TARGET["ppn"]
 
-REMOTE_TIMEOUT = int(os.environ.get("CAS_REMOTE_TIMEOUT", "43200"))   # 12h client-side wait
-LOCAL_TIMEOUT = int(os.environ.get("CAS_LOCAL_TIMEOUT", "14400"))     # 4h
+REMOTE_TIMEOUT = int(os.environ.get("JOB_TIMEOUT", "43200"))   # 12h client-side wait
+LOCAL_TIMEOUT = int(os.environ.get("LOCAL_JOB_TIMEOUT", "14400"))     # 4h
 # The same, for jobs run on this machine. One by default: a local job is assumed to use
 # the whole thing, and a task whose jobs are small enough to share it says so.
 LOCAL_MAX_CONCURRENT = int(os.environ.get("LOCAL_MAX_CONCURRENT",
@@ -137,7 +137,7 @@ _sa_executor = None        # local backend, created lazily
 _jobs = {}                 # remote: job_id -> {"future", "args", "key", "bucket"}
 _job_counter = itertools.count(1)
 _submit_count = 0
-MAX_SUBMITS = int(os.environ.get("CAS_MAX_SUBMITS", "60"))   # backstop on total jobs per run
+MAX_SUBMITS = int(os.environ.get("MAX_SUBMITS", "60"))   # backstop on total jobs per run
 
 _local_jobs = {}           # local: job_id -> {"future", "args"}
 _local_counter = itertools.count(1)
@@ -411,7 +411,7 @@ async def submit_job(args):
         return {"content": [{"type": "text", "text": _WINDDOWN_REFUSAL}], "is_error": True}
     if _submit_count >= MAX_SUBMITS:
         return {"content": [{"type": "text", "text":
-                f"submit refused: hit CAS_MAX_SUBMITS={MAX_SUBMITS} total-jobs cap for this run"}],
+                f"submit refused: hit MAX_SUBMITS={MAX_SUBMITS} total-jobs cap for this run"}],
                 "is_error": True}
     if _remote_pending_count() >= MAX_CONCURRENT:
         return {"content": [{"type": "text", "text":
@@ -497,7 +497,7 @@ async def submit_local(args):
         return {"content": [{"type": "text", "text": _WINDDOWN_REFUSAL}], "is_error": True}
     if not HAS_REMOTE and _local_submit_count >= MAX_SUBMITS:
         return {"content": [{"type": "text", "text":
-                f"submit refused: hit CAS_MAX_SUBMITS={MAX_SUBMITS} total-jobs cap for this run"}],
+                f"submit refused: hit MAX_SUBMITS={MAX_SUBMITS} total-jobs cap for this run"}],
                 "is_error": True}
     if _local_pending_count() >= LOCAL_MAX_CONCURRENT:
         return {"content": [{"type": "text", "text":

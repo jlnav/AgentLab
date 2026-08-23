@@ -15,8 +15,8 @@ export PATH="$HOME/.local/bin:$PATH"
 export CAMPAIGN="$(basename "$PWD")"
 export USER_NAME="${USER_NAME:-$USER}"
 
-export CAS_MAX_SUBMITS=20
-export CAS_MAX_RUNTIME=21600
+export MAX_SUBMITS=20
+export MAX_RUNTIME=21600
 
 # export SLACK_WEBHOOK_FILE="$HOME/.slack_webhook"
 export NOTIFY_START=true

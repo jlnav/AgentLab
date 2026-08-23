@@ -18,8 +18,8 @@ export USER_NAME="${USER_NAME:-$USER}"
 # Jobs take about a second, so a run that proves the machinery works is minutes.
 # Enough for a sweep and then some refinement: one round would not show what a campaign
 # does. Jobs here are a second each, so the budget bounds turns, not money.
-export CAS_MAX_SUBMITS=16
-export CAS_MAX_RUNTIME=900
+export MAX_SUBMITS=16
+export MAX_RUNTIME=900
 
 # No critic on a first run: it finishes in a few minutes and shows the machinery.
 # Run it again with one when you want to see a cycle reviewed -- it takes longer,

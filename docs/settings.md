@@ -17,11 +17,11 @@ collects what is in flight, writes up, and exits.
 
 | | default | |
 |---|---|---|
-| `CAS_MAX_SUBMITS` | 60 | jobs submitted before winding down |
-| `CAS_MAX_RUNTIME` | unset | seconds from start before winding down; unset means no limit |
-| `CAS_STALL_LIMIT` | unset | seconds with nothing completing before giving up; unset means wait |
-| `CAS_REMOTE_TIMEOUT` | 43200 | seconds to wait on one remote job |
-| `CAS_LOCAL_TIMEOUT` | 14400 | seconds to wait on one local job, where a task defines one |
+| `MAX_SUBMITS` | 60 | jobs submitted before winding down |
+| `MAX_RUNTIME` | unset | seconds from start before winding down; unset means no limit |
+| `STALL_LIMIT` | unset | seconds with nothing completing before giving up; unset means wait |
+| `JOB_TIMEOUT` | 43200 | seconds to wait on one remote job |
+| `LOCAL_JOB_TIMEOUT` | 14400 | seconds to wait on one local job, where a task defines one |
 | `MAX_CONCURRENT` | `max_concurrent` in campaign.json, else the system file, else 1 | remote jobs in flight at once |
 | `LOCAL_MAX_CONCURRENT` | `local_max_concurrent` in campaign.json, else the system file, else 1 | local jobs at once; one by default, since a local job is assumed to use the whole machine |
 
