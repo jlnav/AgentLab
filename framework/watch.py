@@ -46,9 +46,17 @@ def workspace(campaign):
 
 
 def newest_run(campaign):
-    """The run directory most recently written to, or None."""
+    """The run to show: one that is still beating, else the most recent.
+
+    Not simply the newest meta.json -- a live run writes its meta once at startup and
+    a finished one writes its own at exit, so a run that ended later looks newer than
+    a run still going, and the view would stick to the finished one."""
     metas = glob.glob(os.path.join(workspace(campaign), "runs", "*", "meta.json"))
-    return os.path.dirname(max(metas, key=os.path.getmtime)) if metas else None
+    if not metas:
+        return None
+    live = [m for m in metas
+            if os.path.isfile(os.path.join(os.path.dirname(m), "heartbeat"))]
+    return os.path.dirname(max(live or metas, key=os.path.getmtime))
 
 
 def _count_lines(path):
@@ -60,9 +68,10 @@ def _count_lines(path):
 
 
 def _submits(path, run_id):
-    """Jobs fired, in total and by this run. The log spans every run of the campaign,
-    so a budget only means something against the run's own count."""
-    total = this_run = 0
+    """Jobs fired, in total and by this run, and how many of this run's have come back.
+    The log spans every run of the campaign, so a budget only means something against
+    the run's own count."""
+    total = this_run = done = 0
     try:
         with open(path, errors="replace") as f:
             for line in f:
@@ -70,14 +79,18 @@ def _submits(path, run_id):
                     row = json.loads(line)
                 except Exception:
                     continue
-                if not str(row.get("event", "")).endswith("submit"):
+                event = str(row.get("event", ""))
+                mine = bool(run_id) and row.get("run") == run_id
+                if event.endswith("completed"):
+                    done += mine
+                    continue
+                if not event.endswith("submit"):
                     continue
                 total += 1
-                if run_id and row.get("run") == run_id:
-                    this_run += 1
+                this_run += mine
     except OSError:
         pass
-    return total, this_run
+    return total, this_run, done
 
 
 def status(campaign):
@@ -99,13 +112,23 @@ def status(campaign):
                 age = int(time.time() - float(f.read().strip()))
         except Exception:
             age = None
-    submits_total, submits_run = _submits(os.path.join(ws, "jobs.jsonl"),
-                                          meta.get("run_id"))
-    started = meta.get("started_at")
+    submits_total, submits_run, done_run = _submits(os.path.join(ws, "jobs.jsonl"),
+                                                    meta.get("run_id"))
+    # How long the run took, not how long ago it began: once it has ended, the clock
+    # stops where it stopped.
+    phase, phase_age = None, None
+    try:
+        with open(os.path.join(run_dir, "phase")) as f:
+            stamp, phase = f.read().split("\n", 1)
+            phase, phase_age = phase.strip(), int(time.time() - float(stamp))
+    except Exception:
+        pass
+    started, ended = meta.get("started_at"), meta.get("ended_at")
     elapsed = None
     if started:
         try:
-            elapsed = int(time.time() - datetime.fromisoformat(started).timestamp())
+            end = datetime.fromisoformat(ended).timestamp() if ended else time.time()
+            elapsed = int(end - datetime.fromisoformat(started).timestamp())
         except Exception:
             elapsed = None
     return {
@@ -113,10 +136,14 @@ def status(campaign):
         "campaign": campaign, "status": meta.get("status"),
         "stop_reason": meta.get("stop_reason"), "model": meta.get("model"),
         "critic": meta.get("critic"), "host": meta.get("host"),
+        "context_tokens": meta.get("context_tokens"),
+        "context_window": meta.get("context_window"),
+        "context_pct": meta.get("context_pct"),
         "started_at": started, "ended_at": meta.get("ended_at"),
         "elapsed_s": elapsed, "heartbeat_age_s": age,
+        "phase": phase, "phase_age_s": phase_age,
         "results": _count_lines(os.path.join(ws, "results.jsonl")),
-        "jobs": submits_total, "jobs_run": submits_run,
+        "jobs": submits_total, "jobs_run": submits_run, "jobs_done": done_run,
         "reviews": _count_lines(os.path.join(ws, "REVIEWS.md")) and
                    open(os.path.join(ws, "REVIEWS.md"), errors="replace").read().count("\n## "),
         "max_submits": meta.get("max_submits"),
@@ -199,7 +226,9 @@ function setTabs(files) {
   t.innerHTML = "";
   for (const n of ["status", "log"].concat(files)) {
     const b = document.createElement("button");
-    b.textContent = n; b.className = n === tab ? "on" : "";
+    // The log is what the agent said and did; the file name is not the point.
+    b.textContent = n === "log" ? "agent log" : n;
+    b.className = n === tab ? "on" : "";
     b.onclick = () => {
       // Every tab starts clean: the log re-reads from the beginning, and the styling
       // of a rendered record does not follow you to the next tab.
@@ -219,14 +248,22 @@ function setTabs(files) {
   }
 }
 
+const short = n => n == null ? "?"
+  : n >= 1e6 ? (n / 1e6).toFixed(n >= 1e7 ? 0 : 1).replace(/\\.0$/, "") + "m"
+  : n >= 1e3 ? Math.round(n / 1e3) + "k" : String(n);
+
 const hms = s => s == null ? "\u2014" :
   (s >= 3600 ? Math.floor(s/3600) + "h " : "") +
   (s >= 60 ? Math.floor(s%%3600/60) + "m " : "") + (s%%60) + "s";
 
-function bar(done, total) {
-  if (!total) return String(done);
+// A budget is a ceiling, not a target: an agent that has answered its question stops
+// early, so the bar shows how much of the allowance is used, not progress towards it.
+function bar(done, total, fmt) {
+  fmt = fmt || String;
+  if (!total) return fmt(done);
   const pct = Math.min(100, Math.round(100 * done / total));
-  return `<span class="bar"><i style="width:${pct}%%"></i></span>${done} of ${total}`;
+  return `<span class="bar"><i style="width:${pct}%%"></i></span>` +
+         `${fmt(done)} of ${fmt(total)} (max)`;
 }
 
 function renderStatus(s) {
@@ -236,14 +273,17 @@ function renderStatus(s) {
     ["state", s.status === "running"
         ? `running \u00b7 heartbeat ${hms(s.heartbeat_age_s)} ago`
         : `${s.status} \u00b7 ${s.stop_reason || ""}`],
-    ["jobs this run", bar(s.jobs_run, s.max_submits)],
+    ["doing", s.status === "running" && s.phase
+        ? `${s.phase} \u00b7 ${hms(s.phase_age_s)}` : "\u2014"],
+    ["jobs submitted", bar(s.jobs_run, s.max_submits)],
+    ["in flight", `${s.jobs_run - s.jobs_done} \u00b7 ${s.jobs_done} returned`],
     ["jobs, all runs", String(s.jobs)],
     ["results recorded", String(s.results)],
     ["reviews", String(s.reviews || 0)],
-    ["elapsed", s.max_runtime_s
-        ? `${bar(s.elapsed_s, s.max_runtime_s)} \u00b7 ${hms(s.elapsed_s)} of ${hms(s.max_runtime_s)}`
-        : hms(s.elapsed_s)],
-    ["model", s.model || "\u2014"],
+    ["elapsed", bar(s.elapsed_s, s.max_runtime_s, hms)],
+    ["model", s.context_pct == null ? (s.model || "\u2014")
+        : `${s.model} \u00b7 context ${short(s.context_tokens)}/${short(s.context_window)} ` +
+          `(${Math.round(s.context_pct)}%%)`],
     ["critic", s.critic || "\u2014"],
     ["host", s.host || "\u2014"],
     ["started", s.started_at || "\u2014"],
@@ -328,7 +368,14 @@ def _render(text):
         return (f'<a href="/image?name={src}" target="_blank">'
                 f'<img src="/image?name={src}" alt="{alt.group(1) if alt else ""}"></a>')
 
-    return re.sub(r'<img[^>]*?src="(?!https?:|/)(?P<src>[^"]+)"[^>]*/?>', _img, html_out)
+    html_out = re.sub(r'<img[^>]*?src="(?!https?:|/)(?P<src>[^"]+)"[^>]*/?>', _img, html_out)
+
+    # A record may link a figure rather than embed it. The link is relative to the
+    # workspace, which only this server can read, so point it at the same route.
+    return re.sub(
+        r'<a href="(?!https?:|/)(?P<href>[^"]+\.(?:png|jpg|jpeg|gif|svg|webp))"',
+        lambda m: f'<a target="_blank" href="/image?name={urllib.parse.quote(m.group("href"))}"',
+        html_out, flags=re.I)
 
 
 class Handler(http.server.BaseHTTPRequestHandler):

@@ -153,10 +153,11 @@ WINDDOWN_PROMPT = (
     "everything is collected you get a final turn to write up the cycle."
 )
 FINALIZE_PROMPT = (
+    # Which records a cycle is written up in is the method's business, not the
+    # runner's: naming a file here produces one that the method never asked for.
     "All outstanding work is collected and this run is now ending. Close out the "
-    "current cycle: write its JOURNAL.md section (with any figures), append the "
-    "one-line pointer to LOGBOOK.md, and note anything a later run needs to pick up "
-    "where you left off. Submit no new work."
+    "current cycle: write it up in the records your method keeps, and note anything a "
+    "later run needs to pick up where you left off. Submit no new work."
 )
 MAX_ROUNDS = 500          # backstop against a runaway loop
 MAX_EMPTY_ROUNDS = 3      # consecutive idle rounds (no work proposed) before giving up
@@ -373,6 +374,31 @@ def load_user_prompt():
 # run history. Liveness is the heartbeat file inside it, not the dir existing.
 # The stop file also lives here, so it is scoped to this run: a restart gets a fresh
 # dir and can never inherit a stale stop request.
+# What a tool call means for someone watching. The tool name says which function was
+# called; a phase says what the run is doing.
+_PHASES = {
+    "submit_job": "submitting jobs", "submit_local": "submitting jobs",
+    "get_completed_jobs": "collecting results", "get_local_completed": "collecting results",
+    "check_backend": "checking the backend", "release_claim": "releasing a claim",
+    "notify": "posting to Slack", "cycle_done": "closing the cycle",
+    "Read": "reading records", "Grep": "reading records", "Glob": "reading records",
+    "Write": "writing up", "Edit": "writing up", "NotebookEdit": "writing up",
+    "Bash": "running analysis", "Task": "delegating",
+}
+
+
+def _set_phase(text):
+    """What the run is doing right now, for anything watching it. A turn can be minutes
+    of silence, and "thinking" and "waiting for jobs" look identical from outside."""
+    try:
+        tmp = os.path.join(RUN_DIR, "phase.tmp")
+        with open(tmp, "w") as f:
+            f.write(f"{time.time():.0f}\n{text}\n")
+        os.replace(tmp, os.path.join(RUN_DIR, "phase"))
+    except Exception:
+        pass
+
+
 def _start_watcher():
     """Serve this run for a browser, if asked. Failing to start one is not a reason to
     lose a run, so a failure is reported and the run carries on."""
@@ -559,6 +585,10 @@ async def drain_turn(client, round_num):
             for block in message.content:
                 if hasattr(block, "text"):
                     print(block.text, flush=True)
+                name = getattr(block, "name", None)
+                if name:
+                    bare = name.rsplit("__", 1)[-1]
+                    _set_phase(f"round {round_num}: {_PHASES.get(bare, bare)}")
         elif isinstance(message, ResultMessage):
             # The session id first becomes known here. Recorded once, so a finished run
             # can be reopened later with `claude -r <id>` for a postmortem.
@@ -630,7 +660,12 @@ async def main():
 
     try:
         async with ClaudeSDKClient(options=options) as client:
-            model = (await _context_usage(client) or {}).get("model") or "?"
+            usage = await _context_usage(client) or {}
+            model = usage.get("model") or "?"
+            if usage.get("totalTokens") is not None:
+                _write_meta(context_tokens=usage.get("totalTokens"),
+                            context_window=usage.get("rawMaxTokens"),
+                            context_pct=usage.get("percentage"))
             print(f"Agent started -- {SYSTEM}{ROLE_NOTE} · model {model}", flush=True)
             _write_meta(model=model)
             if NOTIFY_START:
@@ -654,6 +689,7 @@ async def main():
             for round_num in range(1, MAX_ROUNDS + 1):
                 print(f"\n===== ROUND {round_num} =====", flush=True)
                 _heartbeat()
+                _set_phase(f"round {round_num}: reasoning")
                 # Shut down if the agent flagged a blocking problem it could not get
                 # around and it has stayed unresolved past the grace period.
                 ps = tools.problem_since()
@@ -697,6 +733,7 @@ async def main():
                             # for.
                             slack_notify(f":mag: Reviewing the last cycle with "
                                          f"{CRITIC_LABEL} before exit.")
+                        _set_phase(f"round {round_num}: critic reviewing ({CRITIC_LABEL})")
                         reply = critic.review(CRITIC_MODEL, new_section,
                                               _recent_results())
                         if reply:
@@ -715,6 +752,13 @@ async def main():
                 submits_before = tools.submit_count()
                 await client.query(prompt)
                 await drain_turn(client, round_num)
+                # A long run fills its context, and how full it is decides whether it
+                # can keep going. Recorded each turn so a watcher can show it.
+                u = await _context_usage(client) or {}
+                if u.get("totalTokens") is not None:
+                    _write_meta(context_tokens=u.get("totalTokens"),
+                                context_window=u.get("rawMaxTokens"),
+                                context_pct=u.get("percentage"))
                 new_submits = tools.submit_count() - submits_before
                 print(f"[round {round_num}] new_submits={new_submits} "
                       f"in_flight={tools.jobs_in_flight()} pending={tools.pending_count()}",
@@ -768,6 +812,8 @@ async def main():
                 backend_problem = None
                 board_update = None
                 while tools.pending_count() > 0:
+                    _set_phase(f"round {round_num}: waiting for "
+                               f"{tools.pending_count()} job(s)")
                     done = await loop.run_in_executor(None, tools.wait_for_any, ANNOUNCE_POLL)
                     _heartbeat(force=False)
                     if done > 0:

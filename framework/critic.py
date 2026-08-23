@@ -81,7 +81,7 @@ def _served_models():
 def resolve(agent_model=""):
     """Pick the critic model, once, at startup. Returns (name, label) or (None, reason)."""
     if not MODEL_SETTING:
-        return None, "no critic (CRITIC_MODEL unset)"
+        return None, "none"
     served = _served_models()
     if MODEL_SETTING != "auto":
         if served and MODEL_SETTING not in served:
@@ -94,7 +94,7 @@ def resolve(agent_model=""):
             raise CriticUnavailable(
                 f"CRITIC_MODEL=auto but {BASE_URL} lists no models, so there is nothing "
                 "to choose from")
-        return None, "no critic (no gateway to choose a model from)"
+        return None, "none (asked for one, but no second model is reachable)"
     # A different family than the agent's own, where there is one.
     agent_family = (agent_model or "").split("-")[0].lower()
     for name, upstream in sorted(served.items()):

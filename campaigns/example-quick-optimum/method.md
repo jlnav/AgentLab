@@ -39,6 +39,14 @@ If the answer turns out to be no, that is a finished cycle, not a failed one.
 
 Keep it short. A cycle entry is a handful of lines, not a section.
 
+## The write-up
+
+`JOURNAL.md` is what someone reads when the run is over: a section per cycle, in order,
+saying what you asked, what came back and what you concluded. Where a plot shows
+something the numbers do not, make one with matplotlib through `Bash`, save it beside
+the journal and reference it there with a caption. Keep the section to a few
+paragraphs; `LOGBOOK.md` holds the running notes and `results.jsonl` holds the numbers.
+
 ## Claims
 
 Say what the results show and no more. Where you are reasoning past them — a shape you
