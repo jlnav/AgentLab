@@ -159,6 +159,10 @@ FINALIZE_PROMPT = (
     "current cycle: write it up in the records your method keeps, and note anything a "
     "later run needs to pick up where you left off. Submit no new work."
 )
+# A session id to start from. Its whole conversation becomes this run's context, which
+# costs what it costs and brings any stale conclusions with it, so it is off by default.
+# The session must belong to this user on this machine.
+RESUME_SESSION = (os.environ.get("RESUME_SESSION") or "").strip()
 MAX_ROUNDS = 500          # backstop against a runaway loop
 MAX_EMPTY_ROUNDS = 3      # consecutive idle rounds (no work proposed) before giving up
 MAX_RUNTIME = int(os.environ["MAX_RUNTIME"]) if os.environ.get("MAX_RUNTIME") else None  # total agent wallclock (s); None = no time limit
@@ -637,11 +641,17 @@ async def main():
         permission_mode="bypassPermissions",
         system_prompt=system_prompt,
         cwd=SCRIPT_DIR,
+        # Carry on from a conversation someone already had -- working out what to try
+        # with an agent, then handing that reasoning to the run rather than restating
+        # it in a prompt. Forked, so the original transcript is left as it was.
+        **({"resume": RESUME_SESSION, "fork_session": True} if RESUME_SESSION else {}),
     )
 
     results_file = os.path.join(WORKSPACE_DIR, "results.jsonl")
     loop = asyncio.get_event_loop()
 
+    if RESUME_SESSION:
+        print(f"Resuming from session {RESUME_SESSION} (forked)", flush=True)
     print("Starting CAS search agent...", flush=True)
     print(f"Results: {results_file}", flush=True)
     print("=" * 60, flush=True)

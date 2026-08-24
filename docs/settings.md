@@ -17,6 +17,7 @@ collects what is in flight, writes up, and exits.
 
 | | default | |
 |---|---|---|
+| `RESUME_SESSION` | — | a Claude session id to start from, so a run continues a conversation you had with an agent. Forked, so that transcript is untouched; its whole context comes with it |
 | `MAX_SUBMITS` | 60 | jobs submitted before winding down |
 | `MAX_RUNTIME` | unset | seconds from start before winding down; unset means no limit |
 | `STALL_LIMIT` | unset | seconds with nothing completing before giving up; unset means wait |
