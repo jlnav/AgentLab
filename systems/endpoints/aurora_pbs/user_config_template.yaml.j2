@@ -4,7 +4,8 @@
 #   ~/.globus_compute/<endpoint-name>/user_config_template.yaml.j2
 # The placeholders below are filled per job from the bucket's user_config block.
 #
-# Edit before use: the worker_init environment.
+# Edit before use: the worker_init environment. The account arrives from
+# users/<you>/aurora.json -- there is no default, because it is charged to someone.
 
 # Shut the endpoint down after 10 idle heartbeats (~5 min) with no outstanding tasks,
 # releasing the PBS block. idle_heartbeats_hard is left unset: it triggers on tasks that
@@ -20,7 +21,7 @@ engine:
     launcher:
       type: SimpleLauncher         # the worker runs on the head node of the allocation
 
-    account: {{ account|default("datascience") }}
+    account: {{ account }}
     queue: {{ queue|default("debug") }}
     cpus_per_node: 208
     # ALCF requires the filesystems you touch to be declared.
