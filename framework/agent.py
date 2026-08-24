@@ -538,8 +538,6 @@ def preflight():
             problems += list(tools.task.preflight() or [])
         except Exception as e:
             problems.append(f"task preflight() raised: {e}")
-    if not os.path.isdir(WORKSPACE_DIR):
-        problems.append(f"WORKSPACE_DIR does not exist: {WORKSPACE_DIR}")
     if not os.path.isfile(method_path()):
         problems.append(f"method.md missing: {method_path()} (how-to-work prompt loaded into the agent)")
     # Fail fast if the Globus Compute endpoint is not online -- otherwise every

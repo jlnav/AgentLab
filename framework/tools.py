@@ -660,6 +660,7 @@ def tool_names():
     if HAS_LOCAL:
         names += ["submit_local", "get_local_completed"]
     names.append("notify")
+    names.append("cycle_done")
     if HAS_REMOTE:
         names.append("check_backend")
     return [f"mcp__cas__{n}" for n in names]
