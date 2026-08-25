@@ -57,11 +57,17 @@ model_list:
 
 litellm_settings:
   use_chat_completions_url_for_anthropic_messages: true
+  drop_params: true
 ```
 
 `use_chat_completions_url_for_anthropic_messages` is required for an OpenAI-style
 upstream. Without it LiteLLM translates `/v1/messages` to the OpenAI Responses API,
 and a backend that implements only `/v1/chat/completions` answers 404.
+
+`drop_params` is required for the same reason from the other direction. The agent sends
+parameters an OpenAI backend has no equivalent for -- `context_management` among them --
+and LiteLLM refuses the request rather than dropping them, so the first round fails with
+`UnsupportedParamsError` on a proxy that otherwise works.
 
 Start the proxy:
 
@@ -108,6 +114,7 @@ model_list:
 
 litellm_settings:
   use_chat_completions_url_for_anthropic_messages: true
+  drop_params: true
 ```
 
 Where a gateway serves several vendors' models on one OpenAI-compatible endpoint, every
