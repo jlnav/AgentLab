@@ -8,6 +8,9 @@
 #
 # Usage: ./review_campaign.sh <campaign> [--model NAME]
 #
+# The review is written to campaigns/<campaign>/EFFICIENCY-REVIEW.md as well as printed,
+# so what was raised before the first job can be checked against what was changed.
+#
 # The reviewing model is the critic's if one is configured (CRITIC_MODEL and its
 # gateway, see docs/settings.md), otherwise the agent's own. Neither is required: with
 # no gateway it goes to whatever ANTHROPIC_BASE_URL serves.
@@ -54,6 +57,7 @@ $(cat "$LAB_DIR/systems/$SYSTEM.json")"
 fi
 
 export REVIEW_EVIDENCE="$EVIDENCE" REVIEW_CAMPAIGN="$CAMPAIGN" REVIEW_MODEL="$MODEL"
+export REVIEW_DIR="$DIR"
 python3 - <<'PYEOF'
 import os
 import sys
@@ -82,4 +86,18 @@ reply = critic.review(
     prompt=prompt,
 )
 print(reply or "the reviewer returned nothing", flush=True)
+
+# Kept beside the campaign it judged, and appended: a second review after the fixes
+# should sit under the first, so the pair shows what was raised and what was done.
+if reply:
+    from datetime import datetime
+
+    out = os.path.join(os.environ["REVIEW_DIR"], "EFFICIENCY-REVIEW.md")
+    try:
+        with open(out, "a") as f:
+            f.write(f"\n## {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} -- {model}, "
+                    f"before the run\n\n{reply}\n")
+        print(f"\nwritten to {out}", flush=True)
+    except OSError as e:
+        print(f"could not write the review (ignored): {e}", flush=True)
 PYEOF

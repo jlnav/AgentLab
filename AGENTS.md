@@ -162,7 +162,8 @@ than the allocation, a prompt that enumerates the search, results that will not 
 the conclusions. It takes a minute and answers "nothing worth flagging" when there is
 nothing.
 
-This is the last point at which changing `task.py` is free. Say what it found in a
+It writes what it found to `campaigns/<name>/EFFICIENCY-REVIEW.md` as well as printing
+it. This is the last point at which changing `task.py` is free: say what it found in a
 line, and fix what they agree with before the first job.
 
 ### 9. One job
