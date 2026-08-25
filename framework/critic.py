@@ -195,11 +195,17 @@ def resolve(agent_model=""):
     return name, upstream or name
 
 
-def review(model, write_up, evidence):
-    """Send one cycle to the critic. Returns its raw reply; never raises."""
-    prompt = (_prompt_text()
-              + "\n\n# The write-up\n\n" + write_up
-              + "\n\n# The recorded results\n\n" + (evidence or "(no rows recorded)"))
+def review(model, write_up, evidence, prompt=None):
+    """Send one piece of work to a reviewing model. Returns its raw reply; never raises.
+
+    `prompt` overrides what the reviewer is asked to do, so the same request-and-reply
+    serves a cycle review and the campaign review before a run."""
+    if prompt is not None:
+        prompt = prompt + "\n\n" + write_up
+    else:
+        prompt = (_prompt_text()
+                  + "\n\n# The write-up\n\n" + write_up
+                  + "\n\n# The recorded results\n\n" + (evidence or "(no rows recorded)"))
     body = json.dumps({"model": model, "max_tokens": MAX_TOKENS,
                        "messages": [{"role": "user", "content": prompt}]}).encode()
     req = urllib.request.Request(

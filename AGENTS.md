@@ -153,14 +153,26 @@ Write `users/<their-username>/<system>.json`: endpoint UUID, account to charge, 
 writable directory on the compute system. Create that directory. This file is not
 tracked by git.
 
-### 8. One job
+### 8. Read the campaign back
+
+Offer to run `framework/review_campaign.sh <campaign>`. It reads the campaign's files
+and reports what would waste a machine or a budget -- setup paid once per job that
+could be paid once per batch, concurrency that serialises cheap work, a timeout longer
+than the allocation, a prompt that enumerates the search, results that will not support
+the conclusions. It takes a minute and answers "nothing worth flagging" when there is
+nothing.
+
+This is the last point at which changing `task.py` is free. Say what it found in a
+line, and fix what they agree with before the first job.
+
+### 9. One job
 
 Ask before submitting anything — a single job can hold a node for a long time. With
 their agreement, run one. Preflight checks the task contract, endpoint status and
 workspace writability, so most misconfigurations fail with a message before anything is
 submitted.
 
-### 9. Slack (optional)
+### 10. Slack (optional)
 
 The campaign posts status, milestones and alerts as it goes, and they can message it
 back to steer it mid-run.
@@ -173,7 +185,7 @@ so they do not need it arranged beforehand. The `Slack` section below has both, 
 
 It can also be added later, if they would rather set it up another time.
 
-### 10. Hand over
+### 11. Hand over
 
 The campaign is theirs to start. Show them the command, and that it goes in tmux:
 
