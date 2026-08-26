@@ -93,6 +93,11 @@ def write_state(ts):
         f.write(ts)
 
 
+# A bridge told where to deliver serves one reader and nothing else: its messages are
+# that reader's conversation, and a campaign board is not a place to put them.
+DEDICATED = bool(os.environ.get("SLACK_INBOX"))
+
+
 def secretary_up():
     """Whether the secretary is alive and should get the questions. Its heartbeat goes
     stale if the process dies OR wedges mid-answer; either way we fall back to the
@@ -111,7 +116,7 @@ def forward(messages, me):
     """Deliver agent-directed Slack messages, oldest first: to the secretary if it is
     up, to every campaign board if it is not."""
     lines = []
-    read_all = READ_ALL and secretary_up()
+    read_all = READ_ALL and (DEDICATED or secretary_up())
     for m in reversed(messages):          # Slack returns newest first
         if m.get("bot_id") or m.get("subtype"):
             continue                      # never echo bot posts back at the agents
@@ -131,12 +136,13 @@ def forward(messages, me):
             lines.append(f"[from Slack -- overheard, not addressed to you] {who}: {text}")
     if not lines:
         return 0
-    if secretary_up():
+    if DEDICATED or secretary_up():
         os.makedirs(os.path.dirname(INBOX), exist_ok=True)
         with open(INBOX, "a") as f:
             f.write("\n".join(lines) + "\n")
+        where = "reader" if DEDICATED else "secretary"
         for line in lines:
-            print("forwarded to secretary:", line, flush=True)
+            print(f"forwarded to {where}:", line, flush=True)
         return len(lines)
     campaigns = sorted(d for d in glob.glob(os.path.join(WORKSPACE_ROOT, "*"))
                        if os.path.isdir(d) and os.path.basename(d) != "run")
