@@ -35,9 +35,9 @@ export CRITIC_MODEL="${CRITIC_MODEL:-}"
 # run says a lot that no recorded row can settle.
 export CRITIC_LEVEL="${CRITIC_LEVEL:-light}"
 
-export NOTIFY_START="${NOTIFY_START:-true}"
-export NOTIFY_DAILY="${NOTIFY_DAILY:-false}"
-export NOTIFY_FINISH="${NOTIFY_FINISH:-true}"
+export NOTIFY_START=true
+export NOTIFY_DAILY=false
+export NOTIFY_FINISH=true
 
 echo "[run] CAMPAIGN=$CAMPAIGN USER=$USER_NAME"
 python -u ../../framework/agent.py
