@@ -19,7 +19,8 @@ Env:
     SLACK_INBOX          where the bridge delivers (required)
     ENGINEER_HEARTBEAT   liveness the bridge reads, so it knows to deliver here
     ENGINEER_POLL        seconds between inbox checks (default 5)
-    ENGINEER_BRANCH      branch to work on, created if missing (default agentlab-slack)
+    ENGINEER_BRANCH      a branch to keep its commits on, created if missing. Empty
+                         (the default) leaves the repository where it is
     RESUME_SESSION       a session id to continue instead of starting fresh
     NOTIFY_SCRIPT        how it replies (default framework/slack_notify.sh)
 """
@@ -48,7 +49,7 @@ HEARTBEAT = (os.environ.get("ENGINEER_HEARTBEAT")
              or os.path.join(os.path.dirname(INBOX), "engineer_heartbeat"))
 SESSION_FILE = os.path.join(os.path.dirname(INBOX), "engineer_session")
 POLL = int(os.environ.get("ENGINEER_POLL", "5"))
-BRANCH = os.environ.get("ENGINEER_BRANCH", "agentlab-slack")
+BRANCH = (os.environ.get("ENGINEER_BRANCH") or "").strip()
 RESUME_SESSION = (os.environ.get("RESUME_SESSION") or "").strip()
 NOTIFY_SCRIPT = os.environ.get("NOTIFY_SCRIPT") or os.path.join(SCRIPT_DIR,
                                                                 "slack_notify.sh")
@@ -72,8 +73,8 @@ You may edit, run and commit. You may not push, and you may not open a merge req
 what leaves this machine is decided by a person at a terminal. If asked to push, say
 that and stop.
 
-Commit only on `{BRANCH}`, which the runner has put you on. If you find yourself on
-another branch, say so rather than committing.
+Commit on whatever branch the repository is on; the person you are talking to chose
+it. Do not create branches unless asked.
 
 Commit when the change is finished and the person asked for it, not as you go. A
 commit message says what changed, in one line, and carries no attribution.
@@ -127,9 +128,12 @@ def new_lines(seen, current):
 
 
 def on_branch():
-    """Put the repository on the working branch, creating it if needed. Returns what
-    happened, or None if the repository would not cooperate -- in which case the
-    engineer runs anyway and says so when asked to commit."""
+    """Put the repository on a branch of its own, if the lab asked for one. Off by
+    default: this is someone working on their own repository from a chat window, and
+    switching the branch under a checkout they are also using causes more trouble than
+    it prevents. Returns what happened, or None if git would not cooperate."""
+    if not BRANCH:
+        return "wherever the repository already is"
     try:
         current = subprocess.run(["git", "-C", LAB_DIR, "rev-parse", "--abbrev-ref",
                                   "HEAD"], capture_output=True, text=True,
