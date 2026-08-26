@@ -195,6 +195,9 @@ tmux new -s agentlab
 cd campaigns/<name> && ./run.sh
 ```
 
+`./run.sh --preflight` runs the checks and stops without starting the run, printing the
+tools the agent would be given. Worth doing before committing a machine to a long run.
+
 Tell them what the stopping conditions are set to, and how to watch and stop it —
 `bin/list_agents.sh --all` and `bin/kill_agent.sh --drain <run_id>`.
 

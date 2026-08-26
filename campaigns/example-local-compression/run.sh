@@ -25,4 +25,4 @@ export NOTIFY_DAILY=false
 export NOTIFY_FINISH=false
 
 echo "[run] CAMPAIGN=$CAMPAIGN USER=$USER_NAME"
-python -u ../../framework/agent.py
+python -u ../../framework/agent.py "$@"

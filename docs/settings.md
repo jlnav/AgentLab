@@ -107,13 +107,18 @@ what a gateway makes available.
 | `CRITIC_MAX_TOKENS` | 8000 | cap on one review; a reasoning model spends much of it thinking |
 
 What the agent is given to work with. By default: the campaign's own job tools, and
-`Read`, `Write`, `Edit`, `Glob`, `Grep`, `Bash`, `Skill`, `WebSearch`, `WebFetch`,
-`Agent`. Left out are the CLI's messaging and scheduling tools, and the ones that fork
-work out from under the framework's bookkeeping.
+`Read`, `Write`, `Edit`, `Glob`, `Grep`, `Bash`, `Skill`, `WebFetch`, `Agent`. Left out
+are the CLI's messaging and scheduling tools, and the ones that fork work out from
+under the framework's bookkeeping. `WebSearch` is left out as well: it runs on the API
+server rather than on this machine, so a gateway that does not carry server tools
+refuses it. Add it where the lab's gateway does.
 
 | | default | |
 |---|---|---|
-| `AGENT_TOOLS_EXTRA` | — | Claude Code tools beyond that set, comma or space separated |
+| `AGENT_TOOLS` | — | change that set: `+WebSearch -Write` adjusts it, a plain list (`Read Grep Bash`) replaces it. One form or the other, not both. The job tools are always given — they come from what the task defines. |
+
+`./run.sh --preflight` runs the checks and stops, printing both halves of the list, so
+what a campaign is actually given can be seen before a machine is given to it.
 
 Less often changed.
 

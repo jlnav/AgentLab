@@ -387,17 +387,51 @@ def load_user_prompt():
 # Left out are the tools that belong to an interactive session rather than a campaign:
 # the CLI's messaging and scheduling, where this run posts through its own notify tool
 # and the runner owns its loop, and the ones that fork work out from under the
-# framework's bookkeeping. AGENT_TOOLS_EXTRA adds back anything else a campaign needs.
+# framework's bookkeeping. WebSearch is left out too: it runs on the API server rather
+# than here, so a gateway that does not carry server tools refuses it, and some sites
+# are behind one. AGENT_TOOLS changes this set.
 BASE_TOOLS = ["Read", "Write", "Edit", "Glob", "Grep", "Bash", "Skill",
-              "WebSearch", "WebFetch", "Agent"]
-AGENT_TOOLS_EXTRA = [t for t in re.split(r"[,\s]+",
-                     os.environ.get("AGENT_TOOLS_EXTRA", "")) if t]
+              "WebFetch", "Agent"]
+AGENT_TOOLS = os.environ.get("AGENT_TOOLS", "").strip()
+
+
+def claude_tools():
+    """The Claude Code tools this run gives the agent.
+
+    AGENT_TOOLS unset leaves the defaults. Entries all prefixed + or - adjust them;
+    entries with no prefix are the set, for a campaign that wants to say exactly what
+    it works with. Mixing the two forms is refused rather than guessed at, since either
+    reading of "Read -Bash" silently loses something the campaign asked for.
+    """
+    entries = [t for t in re.split(r"[,\s]+", AGENT_TOOLS) if t]
+    if not entries:
+        return list(BASE_TOOLS)
+    signed = [e for e in entries if e[0] in "+-"]
+    if signed and len(signed) != len(entries):
+        raise ValueError("AGENT_TOOLS mixes +/- adjustments with plain tool names; "
+                         "use one form or the other")
+    if not signed:
+        return list(dict.fromkeys(entries))
+    out = list(BASE_TOOLS)
+    for e in entries:
+        name = e[1:]
+        if not name:
+            raise ValueError(f"AGENT_TOOLS entry '{e}' names no tool")
+        if e[0] == "+":
+            if name not in out:
+                out.append(name)
+        elif name in out:
+            out.remove(name)
+    return out
 
 
 def agent_tools():
-    """Every tool this run is given, job tools first."""
-    names = tools.tool_names() + BASE_TOOLS
-    return names + [t for t in AGENT_TOOLS_EXTRA if t not in names]
+    """Every tool this run is given, job tools first.
+
+    The job tools are not part of the choice: they come from what the campaign's own
+    task.py defines, and a run without them cannot submit anything.
+    """
+    return list(dict.fromkeys(tools.tool_names() + claude_tools()))
 
 
 # One worked example of delegating: a subagent that reads a long record and returns
@@ -599,6 +633,12 @@ def _stop_file_present():
     return os.path.exists(os.path.join(RUN_DIR, "stop"))
 
 
+# `--preflight` runs the checks and stops, for someone deciding whether a campaign is
+# ready before giving a machine to it for days. It leaves no trace of a run: the log is
+# not opened, so the last run's log survives, and no watcher or Slack post is made.
+CHECK_ONLY = "--preflight" in sys.argv
+
+
 def preflight():
     """Verify everything this run needs BEFORE starting. Fail fast with a clear
     message instead of discovering a missing piece mid-run and spinning."""
@@ -624,6 +664,10 @@ def preflight():
             problems += list(tools.task.preflight() or [])
         except Exception as e:
             problems.append(f"task preflight() raised: {e}")
+    try:
+        claude_tools()
+    except ValueError as e:
+        problems.append(str(e))
     if not os.path.isdir(WORKSPACE_DIR):
         problems.append(f"WORKSPACE_DIR does not exist: {WORKSPACE_DIR}")
     if not os.path.isfile(method_path()):
@@ -641,9 +685,10 @@ def preflight():
                     _nm = _c.get_endpoint_metadata(tools.ENDPOINT_ID).get("name") or tools.ENDPOINT_ID
                 except Exception:
                     _nm = tools.ENDPOINT_ID
-                slack_notify(f":rotating_light: Agent exiting -- Globus Compute "
-                             f"endpoint '{_nm}' is not online (status={_st}). Start it: "
-                             f"globus-compute-endpoint start {_nm} --detach")
+                if not CHECK_ONLY:
+                    slack_notify(f":rotating_light: Agent exiting -- Globus Compute "
+                                 f"endpoint '{_nm}' is not online (status={_st}). Start it: "
+                                 f"globus-compute-endpoint start {_nm} --detach")
                 problems.append(f"Globus Compute endpoint '{_nm}' ({tools.ENDPOINT_ID}) is not online "
                                 f"(status={_st}); start it: globus-compute-endpoint start {_nm} --detach")
         except Exception as e:
@@ -675,9 +720,17 @@ def preflight():
         print(f"preflight FAILED: {e}", flush=True)
         sys.exit(1)
     print(f"critic: {CRITIC_LABEL}", flush=True)
-    print(f"tools: {len(agent_tools())}"
-          + (f" (+{','.join(AGENT_TOOLS_EXTRA)})" if AGENT_TOOLS_EXTRA else ""), flush=True)
-    _start_watcher()
+    # The names, not a count: what a campaign is actually given is otherwise only
+    # discoverable by reading the framework. Split in two because the halves are
+    # decided by different things -- the job tools by what the task defines, the rest
+    # by the framework's defaults and AGENT_TOOLS_EXTRA.
+    given = agent_tools()
+    job = [t.rsplit("__", 1)[-1] for t in given if t.startswith("mcp__")]
+    claude = [t for t in given if not t.startswith("mcp__")]
+    print(f"job tools:    {' '.join(job)}", flush=True)
+    print(f"claude tools: {' '.join(claude)}", flush=True)
+    if not CHECK_ONLY:
+        _start_watcher()
 
 
 _session_id = None          # this run's Claude session, for reopening it later
@@ -1037,6 +1090,10 @@ async def main():
 
 
 if __name__ == "__main__":
+    if CHECK_ONLY:
+        preflight()
+        print("preflight only (--preflight): the run was not started.", flush=True)
+        sys.exit(0)
     os.makedirs(LOG_DIR, exist_ok=True)
     with open(LOG_PATH, "w") as log_file:
         sys.stdout = Tee(log_file, sys.__stdout__)
