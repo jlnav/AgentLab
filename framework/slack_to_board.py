@@ -97,6 +97,12 @@ def write_state(ts):
 # that reader's conversation, and a campaign board is not a place to put them.
 DEDICATED = bool(os.environ.get("SLACK_INBOX"))
 
+# Who may instruct the reader: Slack user ids, space separated. Empty means anyone in
+# the channel, which is right when the channel is only the people who may drive it.
+# Enforced here and not in the reader's prompt -- a rule the reader is merely told
+# about is one a message can argue its way past.
+ALLOW = set(os.environ.get("SLACK_ALLOW", "").split())
+
 
 def secretary_up():
     """Whether the secretary is alive and should get the questions. Its heartbeat goes
@@ -123,6 +129,9 @@ def forward(messages, me):
         text = m.get("text", "").strip()
         if not text:
             continue
+        if ALLOW and m.get("user") not in ALLOW:
+            print(f"ignored, not on SLACK_ALLOW: <@{m.get('user')}>: {text}", flush=True)
+            continue
         addressed = f"<@{me}>" in text or BOT_NAME in text
         if not addressed and not read_all:
             continue                      # not addressed to the agents
@@ -130,10 +139,12 @@ def forward(messages, me):
         # The author's Slack id travels with the message: it is what records who asked
         # for a run, and Slack renders it as their name when it is quoted back.
         who = f"<@{m['user']}>" if m.get("user") else "someone"
-        if addressed:
-            lines.append(f"[from Slack -- reply with the notify tool] {who}: {text}")
-        else:
-            lines.append(f"[from Slack -- overheard, not addressed to you] {who}: {text}")
+        tag = ("reply with the notify tool" if addressed
+               else "overheard, not addressed to you")
+        # One reader, one channel: it is talking to whoever is there, so the author's
+        # id is noise. The shared bridge needs it to say who asked for what.
+        lines.append(f"[from Slack -- {tag}] "
+                     + (text if DEDICATED else f"{who}: {text}"))
     if not lines:
         return 0
     if DEDICATED or secretary_up():

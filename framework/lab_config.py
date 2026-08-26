@@ -29,6 +29,8 @@ AS_ENV = {
     "slack-channel": "SLACK_CHANNEL",
     "engineer-slack-channel": "ENGINEER_SLACK_CHANNEL",
     "engineer-webhook-file": "ENGINEER_WEBHOOK_FILE",
+    "engineer-allow": "ENGINEER_ALLOW",
+    "engineer-resume": "ENGINEER_RESUME",
     "startable-campaigns": "SLACK_CAMPAIGNS",
 }
 SERVICES = ("bridge", "secretary", "engineer", "litellm")

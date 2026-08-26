@@ -19,8 +19,13 @@ export SLACK_INBOX="$LAB_DIR/workspace/run/engineer_inbox.md"
 export SLACK_STATE="$LAB_DIR/workspace/run/engineer_last_ts"
 export SLACK_PREFIX="${SLACK_PREFIX:-engineer}"
 export SLACK_READ_ALL="${SLACK_READ_ALL:-true}"
+export SLACK_ALLOW="${ENGINEER_ALLOW:-}"   # Slack user ids that may instruct it; empty: anyone
 export ENGINEER_BRANCH="${ENGINEER_BRANCH:-}"
 export ENGINEER_POLL="${ENGINEER_POLL:-5}"
+# off: a fresh conversation. last: the one it had before. compact: that one, summarised
+# down first. A session id works here too, to pick up a particular conversation.
+export RESUME_SESSION="${RESUME_SESSION:-${ENGINEER_RESUME:-}}"
+if [ "$RESUME_SESSION" = off ]; then RESUME_SESSION=""; fi
 
 [ -n "$SLACK_CHANNEL" ] || { echo "set ENGINEER_SLACK_CHANNEL to the channel it reads" >&2; exit 2; }
 

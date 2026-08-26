@@ -22,6 +22,8 @@ litellm-key-file:                   # only if the proxy wants a different creden
 slack-channel:              # the lab's channel, e.g. C01234567
 engineer-slack-channel:     # the engineer's, if it runs
 engineer-webhook-file: ~/.slack_webhook_dev
+engineer-allow:             # Slack user ids that may instruct it. Empty: anyone in the channel
+engineer-resume: off        # off | last | compact -- carry on yesterday's conversation, summarised down
 
 # Campaigns the secretary may start and stop when asked, space separated. Empty: none.
 startable-campaigns:

@@ -31,6 +31,8 @@ Untracked, because it is this installation's, not the framework's.
 | `slack-channel` | — | the channel the bridge reads: `SLACK_CHANNEL` |
 | `engineer-slack-channel` | — | the engineer's own channel: `ENGINEER_SLACK_CHANNEL` |
 | `engineer-webhook-file` | — | the webhook bound to it: `ENGINEER_WEBHOOK_FILE` |
+| `engineer-resume` | off | `off` starts a fresh conversation, `last` carries on the one before, `compact` carries it on with the history summarised down first: `ENGINEER_RESUME` |
+| `engineer-allow` | — | Slack user ids that may instruct the engineer, space separated; empty means anyone in the channel: `ENGINEER_ALLOW` |
 | `startable-campaigns` | — | campaigns the secretary may start and stop, space separated: `SLACK_CAMPAIGNS` |
 
 Each line is `name: value`, and the right-hand column is the environment variable it
@@ -131,6 +133,8 @@ One of each per lab, not per campaign. Channels and startable campaigns come fro
 | `SLACK_BOT_TOKEN_FILE` | `~/.slack_bot_token` | bot token, needs `channels:history` |
 | `SLACK_BOT_NAME` | `@cas_agent` | plain-text mention fallback |
 | `SLACK_FETCH_POLL` | 5 | seconds between Slack checks; dominates end-to-end latency |
+| `RESUME_SESSION` | — | a session id, or `last` / `compact` for the engineer's own previous conversation. Set from `engineer-resume` |
+| `SLACK_ALLOW` | — | Slack user ids whose messages this bridge forwards, space separated; empty forwards everyone's. Set from `engineer-allow` for the engineer's bridge, so people can watch its channel without driving it |
 | `SLACK_READ_ALL` | false | forward every channel message to the secretary, which decides which are for it; mentions only when the secretary is down |
 | `SLACK_CAMPAIGNS` | — | campaigns the secretary may start and stop on request; empty means none |
 | `START_COOLDOWN` | 300 | seconds before the same campaign can be started again |

@@ -21,7 +21,9 @@ Env:
     ENGINEER_POLL        seconds between inbox checks (default 5)
     ENGINEER_BRANCH      a branch to keep its commits on, created if missing. Empty
                          (the default) leaves the repository where it is
-    RESUME_SESSION       a session id to continue instead of starting fresh
+    RESUME_SESSION       a session id to continue instead of starting fresh, or
+                         `last` for the one this engineer used before, or `compact`
+                         for that one summarised down before it carries on
     NOTIFY_SCRIPT        how it replies (default framework/slack_notify.sh)
 """
 
@@ -51,6 +53,7 @@ SESSION_FILE = os.path.join(os.path.dirname(INBOX), "engineer_session")
 POLL = int(os.environ.get("ENGINEER_POLL", "5"))
 BRANCH = (os.environ.get("ENGINEER_BRANCH") or "").strip()
 RESUME_SESSION = (os.environ.get("RESUME_SESSION") or "").strip()
+COMPACT_FIRST = RESUME_SESSION.lower() == "compact"
 NOTIFY_SCRIPT = os.environ.get("NOTIFY_SCRIPT") or os.path.join(SCRIPT_DIR,
                                                                 "slack_notify.sh")
 
@@ -127,6 +130,44 @@ def new_lines(seen, current):
     return current
 
 
+def last_session():
+    """The session this engineer used before, from the record it writes each turn.
+    The record carries the checkout it belonged to, so a second lab on the same
+    machine does not pick up this one's conversation."""
+    lines = _read(SESSION_FILE).splitlines()
+    if len(lines) >= 2 and os.path.abspath(lines[1].strip()) == os.path.abspath(LAB_DIR):
+        return lines[0].strip()
+    return ""
+
+
+def resume_session():
+    """Which session to carry on, if any. `last` and `compact` both mean the recorded
+    one; they differ in what happens once it is loaded, not in which it is."""
+    if RESUME_SESSION.lower() in ("last", "compact"):
+        return last_session()
+    return RESUME_SESSION
+
+
+async def compact(client):
+    """Summarise the conversation before taking any of the day's questions, so a long
+    history costs a summary rather than the whole transcript from here on. The CLI
+    handles it and records it in the session; a session too short to be worth it says
+    so and nothing is lost."""
+    await client.query("/compact")
+    async for message in client.receive_response():
+        if isinstance(message, AssistantMessage):
+            for block in message.content:
+                if hasattr(block, "text") and block.text.strip():
+                    print(f"[compact] {block.text.strip()[:200]}", flush=True)
+        elif isinstance(message, ResultMessage):
+            # Compaction can leave the conversation on a new session id, and the record
+            # has to name the one to come back to tomorrow.
+            sid = getattr(message, "session_id", None)
+            if sid:
+                _write(SESSION_FILE, f"{sid}\n{LAB_DIR}\n")
+            return
+
+
 def on_branch():
     """Put the repository on a branch of its own, if the lab asked for one. Off by
     default: this is someone working on their own repository from a chat window, and
@@ -169,8 +210,12 @@ async def main():
     print(f"Engineer watching {INBOX} (poll {POLL}s)"
           f"{' [once]' if once else ''}", flush=True)
     print(f"branch: {branch or 'not a git repository -- commits will fail'}", flush=True)
-    if RESUME_SESSION:
-        print(f"resuming from session {RESUME_SESSION} (forked)", flush=True)
+    resume = resume_session()
+    if RESUME_SESSION and not resume:
+        print(f"no earlier session recorded for {LAB_DIR} -- starting fresh", flush=True)
+    elif resume:
+        print(f"resuming session {resume}"
+              + (", compacting first" if COMPACT_FIRST else ""), flush=True)
     if not os.path.isfile(NOTIFY_SCRIPT):
         print(f"[engineer] WARNING: {NOTIFY_SCRIPT} missing -- cannot reply.",
               flush=True)
@@ -180,9 +225,13 @@ async def main():
         allowed_tools=["Read", "Grep", "Glob", "Bash", "Write", "Edit"],
         permission_mode="bypassPermissions",
         cwd=LAB_DIR,
-        **({"resume": RESUME_SESSION, "fork_session": True} if RESUME_SESSION else {}),
+        # Resumed, not forked: this is one conversation picked up again, so it carries
+        # on in the same transcript rather than starting a copy each time.
+        **({"resume": resume} if resume else {}),
     )
     async with ClaudeSDKClient(options=options) as client:
+        if resume and COMPACT_FIRST:
+            await compact(client)
         while True:
             beat()
             inbox = _read(INBOX)
