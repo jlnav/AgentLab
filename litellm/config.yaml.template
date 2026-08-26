@@ -1,0 +1,16 @@
+# The non-Anthropic models this lab can reach, and the backends serving them. Copy to
+# config.yaml and edit. That copy is not tracked by git, because the keys are in it.
+# docs/llm.md explains the two litellm_settings and how to check a model works.
+#
+# lab.yaml decides whether the proxy runs and where; this file is what it reaches.
+
+model_list:
+  - model_name: my-model            # what a campaign asks for: CRITIC_MODEL=my-model
+    litellm_params:
+      model: openai/<upstream-model-name>
+      api_base: https://backend.example/v1
+      api_key: <key>
+
+litellm_settings:
+  use_chat_completions_url_for_anthropic_messages: true
+  drop_params: true

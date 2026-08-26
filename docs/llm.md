@@ -45,7 +45,14 @@ to 0.140.6. Drop the cap once a LiteLLM release no longer needs it; keep it insi
 range rather than pinning further back, since below 0.136.3 is outside what LiteLLM
 supports.
 
-Write a config naming the upstream model, its endpoint, and the key to reach it:
+Write the config that names the upstream model, its endpoint, and the key to reach it.
+It belongs at the top of the lab, where anyone can see which models are on offer:
+
+```
+cp litellm/config.yaml.template litellm/config.yaml
+```
+
+That copy is not tracked by git, since the keys are in it.
 
 ```yaml
 model_list:
@@ -69,10 +76,11 @@ parameters an OpenAI backend has no equivalent for -- `context_management` among
 and LiteLLM refuses the request rather than dropping them, so the first round fails with
 `UnsupportedParamsError` on a proxy that otherwise works.
 
-Start the proxy:
+Start the proxy. `bin/lab.sh start` does it from the `litellm` lines in `lab.yaml`, and
+by hand it is:
 
 ```
-~/venvs/litellm/bin/litellm --config config.yaml --port 4000
+~/venvs/litellm/bin/litellm --config litellm/config.yaml --port 4000
 ```
 
 Check it before pointing the agent at it:

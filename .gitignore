@@ -21,5 +21,6 @@ scratch/
 notifiers/*
 !notifiers/*.template
 
-# This installation's own settings: gateways, credentials, what is available here.
-lab.env
+# This lab's own settings: what it runs, its models, its channels.
+lab.yaml
+litellm/config.yaml

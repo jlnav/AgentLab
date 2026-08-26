@@ -21,6 +21,15 @@ secretary, so nobody stands up new infrastructure per question.
 ## Structure
 
 ```
+lab.yaml       what this lab runs, and where its own things are. Copied from
+               lab.yaml.template. Not tracked by git.
+
+bin/           the commands people type. bin/lab.sh start | stop | status runs
+               the lab's long-lived processes.
+
+litellm/       config.yaml — non-Anthropic models this lab can reach, through
+               a LiteLLM proxy. Not tracked by git.
+
 framework/     the agent loop and the tools it calls. Not edited per campaign.
 
 methods/       how the agent works, and what it records. One is copied into a
@@ -78,6 +87,7 @@ it with jobs in flight.
 ```
 bin/list_agents.sh --all          every run and its outcome
 bin/kill_agent.sh --drain <run>   stop cleanly, finishing jobs in flight
+bin/lab.sh status                 the lab's own processes, and their logs
 ```
 
 ## Writing a campaign

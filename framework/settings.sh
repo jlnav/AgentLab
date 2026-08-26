@@ -1,16 +1,13 @@
-# Sourced, not run: the settings this installation and its lab keep outside the code.
+# Sourced, not run: the lab's own settings, as environment variables.
 #
-#   lab.env                 what this installation can reach -- gateways, credentials
-#   notifiers/<name>.env    how the lab talks to Slack, default notifiers/slack.env
+#   lab.yaml                what this lab runs and where its things are (see the
+#                           template beside it; docs/settings.md explains each)
+#   notifiers/<name>.env    anything about Slack beyond the channel, default slack.env
 #
-# Both are untracked, both are optional, and anything already in the environment wins
-# over either: every line in them is written `${VAR:-default}`.
-#
-# A campaign's run.sh sources this before its own settings, so the campaign has the
-# last word on anything the lab merely offers.
+# Both are untracked and both are optional. Anything already in the environment wins,
+# so a campaign's run.sh has the last word on what the lab merely offers.
 _settings_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-for _settings_file in "$_settings_root/lab.env" \
-                      "$_settings_root/notifiers/${NOTIFIER:-slack}.env"; do
-    [ -f "$_settings_file" ] && . "$_settings_file"
-done
-unset _settings_root _settings_file
+eval "$(python3 "$_settings_root/framework/lab_config.py" --export 2>/dev/null)"
+_settings_notifier="$_settings_root/notifiers/${NOTIFIER:-slack}.env"
+[ -f "$_settings_notifier" ] && . "$_settings_notifier"
+unset _settings_root _settings_notifier

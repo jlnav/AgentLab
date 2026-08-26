@@ -2,6 +2,46 @@
 
 Every setting AgentLab reads, and where it comes from.
 
+Three places, in the order they are read:
+
+| | |
+|---|---|
+| `lab.yaml` | what this lab runs, and where its own things are. Copy `lab.yaml.template` |
+| `notifiers/<transport>.env` | credentials and reader behaviour for the transport, default `notifiers/slack.env`; `NOTIFIER` picks another |
+| `campaigns/<name>/run.sh` | what one campaign wants, which is the last word |
+
+A value already in the environment wins over all three, so a setting given on the
+command line holds for that run only.
+
+## `lab.yaml`
+
+The lab, at a glance: `bin/lab.sh start | stop | status` runs what is switched on here.
+Untracked, because it is this installation's, not the framework's.
+
+| | | |
+|---|---|---|
+| `bridge` | off | forward Slack messages to the secretary and the boards |
+| `secretary` | off | answer from the records, start and stop runs |
+| `engineer` | off | this repository, worked on from a channel of its own |
+| `litellm` | off | a LiteLLM proxy, for using non-Anthropic models. `when-needed` leaves it to a run's preflight, which starts it only if one of them was asked for and nothing is answering |
+| `litellm-bin` | — | the `litellm` executable, from the venv `docs/llm.md` builds |
+| `litellm-config` | `litellm/config.yaml` | which models it reaches |
+| `litellm-url` | — | where it answers: `CRITIC_BASE_URL` |
+| `litellm-key-file` | — | its credential, if not the agent's: `CRITIC_API_KEY_FILE` |
+| `slack-channel` | — | the channel the bridge reads: `SLACK_CHANNEL` |
+| `engineer-slack-channel` | — | the engineer's own channel: `ENGINEER_SLACK_CHANNEL` |
+| `engineer-webhook-file` | — | the webhook bound to it: `ENGINEER_WEBHOOK_FILE` |
+| `startable-campaigns` | — | campaigns the secretary may start and stop, space separated: `SLACK_CAMPAIGNS` |
+
+Each line is `name: value`, and the right-hand column is the environment variable it
+sets, which is how everything below it is reachable without this file at all. The
+exception is the proxy's start command, `CRITIC_GATEWAY_START`, which is built from the
+bin, the config and the port in the URL rather than written out — LiteLLM takes the
+rest of its settings from its own config, so there is nothing else for it to hold.
+
+A relative path on a line naming a file is taken from the lab directory, so
+`litellm/config.yaml` means the same thing wherever the command was run from.
+
 ## Environment — set in the campaign's `run.sh`
 
 Required.
@@ -81,9 +121,8 @@ Less often changed.
 
 ## Environment — Slack bridge and secretary
 
-One of each per lab, not per campaign. The lab's own values live in
-`notifiers/<transport>.env`, default `notifiers/slack.env`, which the two launchers
-read; `NOTIFIER` selects a different file. A value already in the environment wins.
+One of each per lab, not per campaign. Channels and startable campaigns come from
+`lab.yaml`; the rest from `notifiers/<transport>.env`, default `notifiers/slack.env`.
 
 | | default | |
 |---|---|---|
@@ -106,6 +145,8 @@ Time limits that bound a job rather than a launch live here.
 | | |
 |---|---|
 | `campaigns/<name>/campaign.json` | which system, the model, `target.timeout` — seconds a job's own command may run |
+| `lab.yaml` | what this lab runs and where its own things are, as above |
+| `litellm/config.yaml` | the non-Anthropic models this lab can reach, and the keys for them. Copy `litellm/config.yaml.template`; `docs/llm.md` explains the settings that matter |
 | `bin/review_campaign.sh <campaign>` | reads a campaign before it runs and reports what would waste a machine or a budget, appending to `campaigns/<name>/EFFICIENCY-REVIEW.md`; `framework/review_campaign_prompt.md` is what it asks |
 | `systems/<system>.json` | module line, proxy, cache paths, `ppn`, `max_concurrent`, and `bucket_defaults` including the batch allocation's `walltime` |
 | `users/<you>/<system>.json` | endpoint UUID, account to charge, `work_dir` on the compute system |

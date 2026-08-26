@@ -251,18 +251,21 @@ wait, carry on:
    receive when they join.
 3. Create a bot token with `channels:history`, in `~/.slack_bot_token`. Inbound only —
    members never need it.
-4. Record the lab's settings, which is the channel ID and the bot name as people
-   mention it:
+4. Record what this lab runs and the channel it runs in:
 
    ```
+   cp lab.yaml.template lab.yaml
    cp notifiers/slack.env.template notifiers/slack.env
    ```
 
-   That copy is not tracked by git. `docs/settings.md` lists every setting it can hold.
+   Neither copy is tracked by git. `lab.yaml` is the short one — which processes to
+   start, the channel ID, which campaigns may be driven from Slack — and it is what
+   someone reads to see what the lab does. The Slack file holds the bot name and the
+   paths to the two credentials. `docs/settings.md` lists everything both can hold.
 
-   Ask which campaigns, if any, may be started and stopped from Slack, and name them in
-   `SLACK_CAMPAIGNS`. A campaign not named there can be neither started nor stopped
-   however the request is phrased.
+   Ask which campaigns, if any, may be started and stopped from Slack, and name them on
+   the `startable-campaigns` line. A campaign not named there can be neither started
+   nor stopped however the request is phrased.
 
    Ask which way they want to reach the agents. By default a message has to mention the
    bot. With `SLACK_READ_ALL=true` the secretary is given every message in the channel
@@ -270,21 +273,19 @@ wait, carry on:
    secretary turn per message, and the mention rule comes back whenever the secretary
    is not running.
 
-5. Run the bridge, which delivers channel messages to the secretary, or to the
-   campaign boards when the secretary is not running:
+5. Start what they switched on:
 
    ```
-   bin/run_slack_bridge.sh
+   bin/lab.sh start
    ```
 
-6. Run the secretary, which answers questions from the recorded results so campaigns
-   are not interrupted to reply, and starts and stops runs on request:
+   The bridge delivers channel messages to the secretary, or to the campaign boards
+   when the secretary is not running. The secretary answers questions from the recorded
+   results so campaigns are not interrupted to reply, and starts and stops runs on
+   request. `bin/lab.sh status` says what is up and where each one logs; `stop` ends
+   them.
 
-   ```
-   bin/run_secretary.sh
-   ```
-
-Both are long-running and belong to the lab, not to a campaign or a user. One of each
+These are long-running and belong to the lab, not to a campaign or a user. One of each
 serves everyone.
 
 ## Running and controlling

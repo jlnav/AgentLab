@@ -1,6 +1,6 @@
 #!/bin/bash
 # OPTIONAL. Answers board questions so the agents are not interrupted.
-# Settings come from notifiers/slack.env; copy notifiers/slack.env.template to make it.
+# Settings come from lab.yaml and notifiers/slack.env -- see docs/settings.md.
 # Run from this dir: ./run_secretary.sh
 set -euo pipefail
 cd "$(dirname "$0")"

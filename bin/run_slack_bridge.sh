@@ -1,7 +1,7 @@
 #!/bin/bash
 # OPTIONAL. Forwards Slack messages that @-mention the bot onto the announcements
 # board. Needs a bot token with channels:history -- see AGENTS.md.
-# Settings come from notifiers/slack.env; copy notifiers/slack.env.template to make it.
+# Settings come from lab.yaml and notifiers/slack.env -- see docs/settings.md.
 # Run from this dir: ./run_slack_bridge.sh
 set -euo pipefail
 cd "$(dirname "$0")"
