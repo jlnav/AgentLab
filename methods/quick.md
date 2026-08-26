@@ -39,6 +39,12 @@ If the answer turns out to be no, that is a finished cycle, not a failed one.
 
 Keep it short. A cycle entry is a handful of lines, not a section.
 
+### When there is a lot to read
+
+Where there is a lot to read, ask a subagent to read it and answer, if one is
+available. The `reader` subagent is set up for that; its call blocks, so the answer
+arrives in the same turn.
+
 ## The write-up
 
 `JOURNAL.md` is what someone reads when the run is over: a section per cycle, in order,

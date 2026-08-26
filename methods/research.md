@@ -58,6 +58,12 @@ Write the journal entry when a cycle's experiment finishes, not at the end of th
 At the end of a run, append a closing summary to `LOGBOOK.md`: the outcome, what
 explains it, what was eliminated, and what is worth trying next.
 
+### When there is a lot to read
+
+Where there is a lot to read, ask a subagent to read it and answer, if one is
+available. The `reader` subagent is set up for that; its call blocks, so the answer
+arrives in the same turn.
+
 ## Figures
 
 A figure is an image file, not a description of one. Plot with matplotlib through `Bash`,

@@ -55,6 +55,12 @@ decided and why.
 At the end of a run, append a closing summary to `LOGBOOK.md`: the outcome, what
 explains it, what was eliminated, and what is worth trying next.
 
+### When there is a lot to read
+
+Where there is a lot to read, ask a subagent to read it and answer, if one is
+available. The `reader` subagent is set up for that; its call blocks, so the answer
+arrives in the same turn.
+
 ## Figures
 
 Only make a figure when it is genuinely helpful. Plot with matplotlib through

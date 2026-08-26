@@ -25,6 +25,7 @@ from datetime import datetime
 from claude_agent_sdk import (
     ClaudeSDKClient,
     ClaudeAgentOptions,
+    AgentDefinition,
     AssistantMessage,
     ResultMessage,
 )
@@ -375,6 +376,83 @@ def load_user_prompt():
         return f.read()
 
 
+# What the agent works with: its own job tools, and the Claude Code tools that suit a
+# run nobody is watching. Reading, writing, editing, shell, skills, the web, and Agent
+# -- a campaign should reach a facility's own procedures, look up what a library's
+# defaults actually are, and hand a long read to a subagent, the way anyone else would.
+# Agent is here rather than behind a setting because delegating is the agent's call to
+# make, and a prompt asking for it should work without the campaign being configured
+# for it first.
+#
+# Left out are the tools that belong to an interactive session rather than a campaign:
+# the CLI's messaging and scheduling, where this run posts through its own notify tool
+# and the runner owns its loop, and the ones that fork work out from under the
+# framework's bookkeeping. AGENT_TOOLS_EXTRA adds back anything else a campaign needs.
+BASE_TOOLS = ["Read", "Write", "Edit", "Glob", "Grep", "Bash", "Skill",
+              "WebSearch", "WebFetch", "Agent"]
+AGENT_TOOLS_EXTRA = [t for t in re.split(r"[,\s]+",
+                     os.environ.get("AGENT_TOOLS_EXTRA", "")) if t]
+
+
+def agent_tools():
+    """Every tool this run is given, job tools first."""
+    names = tools.tool_names() + BASE_TOOLS
+    return names + [t for t in AGENT_TOOLS_EXTRA if t not in names]
+
+
+# One worked example of delegating: a subagent that reads a long record and returns
+# what the run needs from it, so the record itself never enters the main agent's
+# context. It is offered, not imposed -- the agent may use it, use a built-in type, or
+# not delegate at all, and a campaign prompt can ask for something else.
+#
+# The whole definition lives in one file, front matter and prompt, in the form a
+# subagent is normally written in. It is read here rather than from `.claude/agents/`
+# because the SDK only loads that directory when `setting_sources` includes the
+# project, which would bring the rest of a project's settings with it.
+SUBAGENT_DIR = os.environ.get("SUBAGENT_DIR") or SCRIPT_DIR
+SUBAGENT_FILES = ["subagent_reader.md"]
+
+
+def _parse_subagent(path):
+    """A front-matter subagent file -> (name, AgentDefinition)."""
+    with open(path) as f:
+        text = f.read()
+    if not text.startswith("---"):
+        raise ValueError(f"{path}: no front matter")
+    _, front, body = text.split("---", 2)
+    meta = {}
+    for line in front.strip().splitlines():
+        if ":" in line:
+            k, v = line.split(":", 1)
+            meta[k.strip()] = v.strip()
+    fields = {}
+    if meta.get("tools"):
+        fields["tools"] = [t for t in re.split(r"[,\s]+", meta["tools"]) if t]
+    if meta.get("model"):
+        fields["model"] = meta["model"]
+    if "background" in meta:
+        # A blocking call puts the answer in the tool result, so the turn that asked
+        # can act on it. A background call returns a launch stub and the answer lands
+        # some turns later.
+        fields["background"] = meta["background"].lower() == "true"
+    return meta["name"], AgentDefinition(description=meta["description"],
+                                         prompt=body.strip(), **fields)
+
+
+def subagent_defs():
+    """Subagent types this run offers, or None if none could be read."""
+    defs = {}
+    for fname in SUBAGENT_FILES:
+        path = os.path.join(SUBAGENT_DIR, fname)
+        try:
+            name, d = _parse_subagent(path)
+        except (OSError, ValueError, KeyError) as e:
+            print(f"[subagent] skipped {fname}: {e}", flush=True)
+            continue
+        defs[name] = d
+    return defs or None
+
+
 # --- Run directory: one permanent dir per run -----------------------------------
 # Holds this run's metadata and a snapshot of the prompt files it actually used, so
 # a run stays reproducible after the prompts change. It is NEVER deleted -- it is the
@@ -390,8 +468,12 @@ _PHASES = {
     "notify": "posting to Slack", "cycle_done": "closing the cycle",
     "Read": "reading records", "Grep": "reading records", "Glob": "reading records",
     "Write": "writing up", "Edit": "writing up", "NotebookEdit": "writing up",
-    "Bash": "running analysis", "Task": "delegating",
+    "Bash": "running analysis",
 }
+# Which subagent each Agent call started, keyed by the call's id, so a turn arriving
+# from a subagent can be named after it. These labels describe the agent's own work,
+# and a subagent is doing a different job with the same tools.
+_DELEGATES = {}
 
 
 def _set_phase(text):
@@ -593,6 +675,8 @@ def preflight():
         print(f"preflight FAILED: {e}", flush=True)
         sys.exit(1)
     print(f"critic: {CRITIC_LABEL}", flush=True)
+    print(f"tools: {len(agent_tools())}"
+          + (f" (+{','.join(AGENT_TOOLS_EXTRA)})" if AGENT_TOOLS_EXTRA else ""), flush=True)
     _start_watcher()
 
 
@@ -603,12 +687,28 @@ async def drain_turn(client, round_num):
     """Print the assistant's output for one turn (until its ResultMessage)."""
     async for message in client.receive_response():
         if isinstance(message, AssistantMessage):
+            # A subagent's own turns arrive on this stream as well, carrying the id of
+            # the Agent call that started them. Name that subagent in the phase, so a
+            # watcher sees who is working rather than the agent's own word for whatever
+            # tool the subagent happens to be using.
+            parent = getattr(message, "parent_tool_use_id", None)
+            who = _DELEGATES.get(parent) if parent else None
             for block in message.content:
                 if hasattr(block, "text"):
                     print(block.text, flush=True)
                 name = getattr(block, "name", None)
-                if name:
-                    bare = name.rsplit("__", 1)[-1]
+                if not name:
+                    continue
+                bare = name.rsplit("__", 1)[-1]
+                if bare == "Agent":
+                    sub = (getattr(block, "input", None) or {}).get("subagent_type")
+                    if sub:
+                        _DELEGATES[getattr(block, "id", None)] = sub
+                    _set_phase(f"round {round_num}: waiting on subagent "
+                               f"{sub or '(unnamed)'}")
+                elif who:
+                    _set_phase(f"round {round_num}: subagent {who} ({bare})")
+                else:
                     _set_phase(f"round {round_num}: {_PHASES.get(bare, bare)}")
         elif isinstance(message, ResultMessage):
             # The session id first becomes known here. Recorded once, so a finished run
@@ -631,13 +731,11 @@ async def main():
         mcp_servers={"cas": server},
         # The task plug-in decides which job tools exist (a task with no local
         # comparator does not get the local pair), so take the list from tools.
-        allowed_tools=tools.tool_names() + [
-            "Read",
-            "Write",
-            "Glob",
-            "Grep",
-            "Bash",
-        ],
+        # `tools`, not `allowed_tools`: this is the list the agent is given.
+        # allowed_tools only says which calls proceed without someone being asked,
+        # which decides nothing in a run with nobody there to ask.
+        tools=agent_tools(),
+        agents=subagent_defs(),
         permission_mode="bypassPermissions",
         system_prompt=system_prompt,
         cwd=SCRIPT_DIR,

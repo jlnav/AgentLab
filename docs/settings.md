@@ -106,6 +106,15 @@ what a gateway makes available.
 | `CRITIC_GATEWAY_WAIT` | 60 | seconds to wait for that gateway to answer before carrying on without it |
 | `CRITIC_MAX_TOKENS` | 8000 | cap on one review; a reasoning model spends much of it thinking |
 
+What the agent is given to work with. By default: the campaign's own job tools, and
+`Read`, `Write`, `Edit`, `Glob`, `Grep`, `Bash`, `Skill`, `WebSearch`, `WebFetch`,
+`Agent`. Left out are the CLI's messaging and scheduling tools, and the ones that fork
+work out from under the framework's bookkeeping.
+
+| | default | |
+|---|---|---|
+| `AGENT_TOOLS_EXTRA` | — | Claude Code tools beyond that set, comma or space separated |
+
 Less often changed.
 
 | | default | |
