@@ -36,6 +36,9 @@ Env:
     SLACK_FETCH_POLL       seconds between checks (default 5)
     SECRETARY_ALIVE_WITHIN heartbeat age that still counts as up (default 60)
     SLACK_READ_ALL         1/true to forward every message, not only mentions
+    SLACK_INBOX            where to deliver, when this bridge serves a reader of its
+                           own rather than the secretary
+    SLACK_READER_HEARTBEAT that reader's liveness file
 """
 
 import json
@@ -51,9 +54,12 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 # each campaign has its own ANNOUNCEMENTS.md that its agent reads between rounds.
 WORKSPACE_ROOT = os.path.abspath(os.environ.get(
     "WORKSPACE_ROOT", os.path.join(SCRIPT_DIR, "..", "workspace")))
-STATE = os.path.join(WORKSPACE_ROOT, "run", "slack_last_ts")
-INBOX = os.path.join(WORKSPACE_ROOT, "run", "slack_inbox.md")
-HEARTBEAT = os.path.join(WORKSPACE_ROOT, "run", "secretary_heartbeat")
+STATE = (os.environ.get("SLACK_STATE")
+         or os.path.join(WORKSPACE_ROOT, "run", "slack_last_ts"))
+INBOX = os.environ.get("SLACK_INBOX") or os.path.join(WORKSPACE_ROOT, "run",
+                                                     "slack_inbox.md")
+HEARTBEAT = os.environ.get("SLACK_READER_HEARTBEAT") or os.path.join(
+    WORKSPACE_ROOT, "run", "secretary_heartbeat")
 # s; a secretary heartbeat fresher than this means it is up and owns Slack questions.
 # It rewrites the file every poll (default 5s), so this tolerates many missed beats.
 SECRETARY_ALIVE_WITHIN = int(os.environ.get("SECRETARY_ALIVE_WITHIN", "60"))
