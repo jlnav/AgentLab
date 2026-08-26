@@ -47,6 +47,8 @@ from claude_agent_sdk import (
 )
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+# The commands a person or an agent runs live beside the framework, not in it.
+BIN_DIR = os.path.join(os.path.dirname(SCRIPT_DIR), "bin")
 # One secretary serves the whole lab. WORKSPACE_ROOT holds one directory per campaign,
 # each with its own ANNOUNCEMENTS.md, results.jsonl, LOGBOOK.md and JOURNAL.md, plus
 # run/ for state that belongs to the lab rather than to any one campaign.
@@ -84,7 +86,7 @@ campaigns and their run_ids below; a relay is addressed to the run_id.
 
 A question rarely names a campaign. Work out which one it is about from what is
 running and what was asked; if it could be either and it matters, say which you
-answered for. `{SCRIPT_DIR}/list_agents.sh --all` lists every run and its outcome.
+answered for. `{BIN_DIR}/list_agents.sh --all` lists every run and its outcome.
 
 These files are large. Use Grep and targeted Read (offset/limit); do not read them
 whole.
@@ -136,11 +138,11 @@ answer what you can from the files.
 
 # Starting a run
 
-`{SCRIPT_DIR}/start_run.sh <campaign>` starts one run of a campaign the lab has made
+`{BIN_DIR}/start_run.sh <campaign>` starts one run of a campaign the lab has made
 startable, and refuses anything else -- an unlisted campaign, one with an agent already
 running, one started moments ago:
 
-  bash {SCRIPT_DIR}/start_run.sh <campaign> "<the asker's <@U...> id, as it reached you>"
+  bash {BIN_DIR}/start_run.sh <campaign> "<the asker's <@U...> id, as it reached you>"
 
 How sure you have to be depends on how the request reached you.
 
@@ -158,10 +160,10 @@ the agent and stop it. Report a refusal as it is written.
 
 # Stopping a run
 
-`{SCRIPT_DIR}/stop_run.sh <handle>` stops one running agent, under the same rules and
+`{BIN_DIR}/stop_run.sh <handle>` stops one running agent, under the same rules and
 with the same care as starting:
 
-  bash {SCRIPT_DIR}/stop_run.sh <handle> "<the asker's <@U...> id, as it reached you>"
+  bash {BIN_DIR}/stop_run.sh <handle> "<the asker's <@U...> id, as it reached you>"
 
 Addressed to you, it is a request and you carry it out. Not addressed to you, say what
 you would stop and ask -- "About to stop <handle>, which is mid-cycle. Confirm and I
@@ -174,10 +176,10 @@ Say that, rather than reporting it as already stopped. An immediate stop is
 
 # Syncing the shared directory to collaborators
 
-`{SCRIPT_DIR}/sync_shared.sh` publishes the shared directory to a collaborator mirror
+`{BIN_DIR}/sync_shared.sh` publishes the shared directory to a collaborator mirror
 over Globus. It is OPTIONAL and may not be configured -- if its collection IDs are
 still placeholders, say that rather than running it. When it is configured you may run
-it on request:  bash {SCRIPT_DIR}/sync_shared.sh
+it on request:  bash {BIN_DIR}/sync_shared.sh
 It prints the Globus task id. If it fails it exits non-zero and prints why; a common
 cause is an expired Globus session, which a human has to renew with
 `globus session update <site>`. Report the failure text as-is; do not retry in a loop.

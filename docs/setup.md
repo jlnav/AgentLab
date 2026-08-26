@@ -95,8 +95,8 @@ tmux new -s agentlab
 ```
 
 ```
-framework/list_agents.sh --all          every run, and its outcome
-framework/kill_agent.sh --drain <run>   stop cleanly, finishing jobs in flight
+bin/list_agents.sh --all          every run, and its outcome
+bin/kill_agent.sh --drain <run>   stop cleanly, finishing jobs in flight
 ```
 
 Preflight checks the task contract, the endpoint status and workspace writability

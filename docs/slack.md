@@ -70,7 +70,7 @@ An unaddressed line is answered by every agent reading that board, which is why 
 relay always names its reader.
 
 It can also start and stop runs, for campaigns named in `SLACK_CAMPAIGNS`:
-`framework/start_run.sh <campaign>` and `framework/stop_run.sh <handle>`. Both refuse
+`bin/start_run.sh <campaign>` and `bin/stop_run.sh <handle>`. Both refuse
 anything not on that list; a start also refuses a campaign that already has a live
 agent or was started within `START_COOLDOWN`, and a stop always drains. A request made
 without mentioning the bot is confirmed in the channel before either runs.

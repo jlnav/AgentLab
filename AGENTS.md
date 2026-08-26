@@ -155,7 +155,7 @@ tracked by git.
 
 ### 8. Read the campaign back
 
-Offer to run `framework/review_campaign.sh <campaign>`. It reads the campaign's files
+Offer to run `bin/review_campaign.sh <campaign>`. It reads the campaign's files
 and reports what would waste a machine or a budget -- setup paid once per job that
 could be paid once per batch, concurrency that serialises cheap work, a timeout longer
 than the allocation, a prompt that enumerates the search, results that will not support
@@ -196,7 +196,7 @@ cd campaigns/<name> && ./run.sh
 ```
 
 Tell them what the stopping conditions are set to, and how to watch and stop it —
-`framework/list_agents.sh --all` and `framework/kill_agent.sh --drain <run_id>`.
+`bin/list_agents.sh --all` and `bin/kill_agent.sh --drain <run_id>`.
 
 ## Steps that need them at the keyboard
 
@@ -274,14 +274,14 @@ wait, carry on:
    campaign boards when the secretary is not running:
 
    ```
-   framework/run_slack_bridge.sh
+   bin/run_slack_bridge.sh
    ```
 
 6. Run the secretary, which answers questions from the recorded results so campaigns
    are not interrupted to reply, and starts and stops runs on request:
 
    ```
-   framework/run_secretary.sh
+   bin/run_secretary.sh
    ```
 
 Both are long-running and belong to the lab, not to a campaign or a user. One of each
@@ -299,9 +299,9 @@ cd campaigns/<name> && ./run.sh
 ```
 
 ```
-framework/list_agents.sh --all          every run and its outcome
-framework/list_agents.sh -n 5           the last five runs
-framework/kill_agent.sh --drain <run>   stop cleanly, finishing jobs in flight
+bin/list_agents.sh --all          every run and its outcome
+bin/list_agents.sh -n 5           the last five runs
+bin/kill_agent.sh --drain <run>   stop cleanly, finishing jobs in flight
 ```
 
 A running agent has a short handle — `local1` — which is what it posts under in Slack

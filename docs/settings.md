@@ -106,7 +106,7 @@ Time limits that bound a job rather than a launch live here.
 | | |
 |---|---|
 | `campaigns/<name>/campaign.json` | which system, the model, `target.timeout` — seconds a job's own command may run |
-| `framework/review_campaign.sh <campaign>` | reads a campaign before it runs and reports what would waste a machine or a budget, appending to `campaigns/<name>/EFFICIENCY-REVIEW.md`; `framework/review_campaign_prompt.md` is what it asks |
+| `bin/review_campaign.sh <campaign>` | reads a campaign before it runs and reports what would waste a machine or a budget, appending to `campaigns/<name>/EFFICIENCY-REVIEW.md`; `framework/review_campaign_prompt.md` is what it asks |
 | `systems/<system>.json` | module line, proxy, cache paths, `ppn`, `max_concurrent`, and `bucket_defaults` including the batch allocation's `walltime` |
 | `users/<you>/<system>.json` | endpoint UUID, account to charge, `work_dir` on the compute system |
 

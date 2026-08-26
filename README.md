@@ -76,8 +76,8 @@ Start it inside tmux. A campaign runs for hours or days, and closing the termina
 it with jobs in flight.
 
 ```
-framework/list_agents.sh --all          every run and its outcome
-framework/kill_agent.sh --drain <run>   stop cleanly, finishing jobs in flight
+bin/list_agents.sh --all          every run and its outcome
+bin/kill_agent.sh --drain <run>   stop cleanly, finishing jobs in flight
 ```
 
 ## Writing a campaign

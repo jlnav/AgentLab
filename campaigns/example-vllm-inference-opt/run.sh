@@ -2,8 +2,8 @@
 # Launch the agent for this campaign. Run from this directory, inside tmux:
 #   tmux new -s agentlab && ./run.sh
 #
-# Stop:  ../../framework/kill_agent.sh --drain <run_id>
-# List:  ../../framework/list_agents.sh --all
+# Stop:  ../../bin/kill_agent.sh --drain <run_id>
+# List:  ../../bin/list_agents.sh --all
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -13,7 +13,7 @@ export PATH="$HOME/.local/bin:$PATH"
 
 # What this installation has available -- model gateways, credentials. Anything below
 # overrides it, since a campaign knows its own needs. Settings: docs/settings.md
-. ../../framework/lab_env.sh
+. ../../framework/settings.sh
 export CAMPAIGN="$(basename "$PWD")"
 export USER_NAME="${USER_NAME:-$USER}"
 

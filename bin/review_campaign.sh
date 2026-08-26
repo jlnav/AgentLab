@@ -57,12 +57,12 @@ $(cat "$LAB_DIR/systems/$SYSTEM.json")"
 fi
 
 export REVIEW_EVIDENCE="$EVIDENCE" REVIEW_CAMPAIGN="$CAMPAIGN" REVIEW_MODEL="$MODEL"
-export REVIEW_DIR="$DIR"
+export REVIEW_DIR="$DIR" REVIEW_FRAMEWORK="$LAB_DIR/framework"
 python3 - <<'PYEOF'
 import os
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.environ["REVIEW_FRAMEWORK"])
 import critic
 
 model = os.environ.get("REVIEW_MODEL") or ""
@@ -75,7 +75,7 @@ if not model:
     # agent's own model is served.
     model = model or os.environ.get("ANTHROPIC_MODEL") or "claude-opus-5"
 
-with open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+with open(os.path.join(os.environ["REVIEW_FRAMEWORK"],
                        "review_campaign_prompt.md")) as f:
     prompt = f.read()
 
