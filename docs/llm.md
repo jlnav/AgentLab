@@ -58,7 +58,7 @@ fail with `UnsupportedParamsError`.
 
 The launcher initializes PostgreSQL under `scratch/litellm-postgres`, uses TCP port 5433
 for the database, and serves the proxy on port 4000. The database is local and gitignored.
-It generates LiteLLM's Prisma client when needed; LiteLLM runs its migrations during
+It generates LiteLLM's Prisma client when needed and applies the packaged schema before
 startup. Stop the foreground process with Ctrl-C, or stop both services from another
 terminal with:
 
@@ -68,8 +68,11 @@ pixi run litellm-proxy-stop
 
 Set `LITELLM_MASTER_KEY` and `LITELLM_SALT_KEY` before starting when using this beyond
 local development. The defaults are intentionally only suitable for a local machine.
-Use `LITELLM_PORT`, `LITELLM_DB_PORT`, or `LITELLM_PGDATA` to change the proxy port,
-database port, or database directory.
+Set any upstream credential variables referenced by `litellm/config.yaml` before starting.
+Keep those credentials out of Git. Use `LITELLM_PORT`,
+`LITELLM_DB_PORT`, or `LITELLM_PGDATA` to change the proxy port, database port, or
+database directory. The proxy binds to `127.0.0.1` by default; set `LITELLM_HOST`
+deliberately for remote access and use a strong master key.
 
 To run the proxy as a lab service instead, set `litellm: on`, `litellm-bin`, and
 `litellm-config` in `lab.yaml`, then use `bin/lab.sh start`. The lab launcher starts the
@@ -77,20 +80,25 @@ command configured by `litellm-bin`; it does not manage the local PostgreSQL ser
 For the repository launcher, `LITELLM_CONFIG` selects the config file and defaults to
 `litellm/config.yaml`.
 
-Check the proxy before pointing the agent at it:
+Check the proxy before pointing the agent at it. `LITELLM_MASTER_KEY` authenticates the
+Agent SDK to the proxy; the configured `api_key` authenticates LiteLLM to the upstream:
 
 ```
-curl -s -X POST http://0.0.0.0:4000/v1/messages -H 'content-type: application/json' -H 'x-api-key: <key>' -H 'anthropic-version: 2023-06-01' -d '{"model":"my-model","max_tokens":64,"messages":[{"role":"user","content":"say hi"}]}'
+curl -s -X POST http://127.0.0.1:4000/v1/messages -H 'content-type: application/json' -H "x-api-key: $LITELLM_MASTER_KEY" -H 'anthropic-version: 2023-06-01' -d '{"model":"my-model","max_tokens":64,"messages":[{"role":"user","content":"say hi"}]}'
 ```
 
-Then point the settings at the proxy:
+Then configure the SDK process (or its `~/.claude/settings.json`) with the proxy URL,
+model, and the same proxy master key:
 
-```json
-{
-  "env": {"ANTHROPIC_BASE_URL": "http://0.0.0.0:4000", "ANTHROPIC_API_KEY": "<key>"},
-  "model": "my-model"
-}
+```sh
+export ANTHROPIC_BASE_URL=http://127.0.0.1:4000
+export ANTHROPIC_API_KEY="$LITELLM_MASTER_KEY"
+export AGENT_MODEL=my-model
 ```
+
+Use `127.0.0.1`, not `0.0.0.0`, as a client URL. `ANTHROPIC_API_KEY` should be the
+LiteLLM master key when the proxy uses its configured upstream `api_key`; use caller
+credentials only when the proxy is deliberately configured for that mode.
 
 ## Offering several models from one proxy
 
@@ -117,16 +125,15 @@ entry uses the `openai/` handler regardless of who made the model: the handler n
 wire format, not the vendor. Reserve `gemini/` and `anthropic/` for going to those vendors
 directly.
 
-Each person then names the model they want:
+Each person then names the model they want and authenticates to the proxy:
 
 ```json
-{"env": {"ANTHROPIC_BASE_URL": "http://<proxy-host>:4000", "ANTHROPIC_API_KEY": "<their key>"}, "model": "gemini"}
+{"env": {"ANTHROPIC_BASE_URL": "http://<proxy-host>:4000", "ANTHROPIC_API_KEY": "<proxy key>"}, "model": "gemini"}
 ```
 
-LiteLLM forwards the caller's credential to the backend rather than substituting the key
-in the config. `ANTHROPIC_API_KEY` must therefore be accepted by the backend, not be an
-arbitrary string. Where the backend authenticates by username, use that username. The
-proxy should only be reachable from places where those credentials are already trusted.
+Each model's configured `api_key` is used upstream by default. To attribute upstream
+usage to each caller instead, configure LiteLLM explicitly for caller-provided credentials
+and limit proxy access to the trusted network.
 
 Mixing an Anthropic-native upstream into the same config is untested here.
 `use_chat_completions_url_for_anthropic_messages` applies proxy-wide, so a Claude model

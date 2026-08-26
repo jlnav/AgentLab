@@ -6,7 +6,7 @@
 #   pixi run litellm-proxy-stop   # stop the proxy, then PostgreSQL
 #
 # Press Ctrl-C in the start command to stop the proxy before PostgreSQL.
-# Override LITELLM_CONFIG, LITELLM_PORT, LITELLM_DB_PORT,
+# Override LITELLM_CONFIG, LITELLM_PORT, LITELLM_DB_PORT, LITELLM_HOST,
 # LITELLM_MASTER_KEY, LITELLM_SALT_KEY, or LITELLM_PGDATA when needed.
 set -euo pipefail
 
@@ -17,6 +17,9 @@ PIDFILE="${LITELLM_PIDFILE:-$ROOT_DIR/scratch/litellm-proxy.pid}"
 DB_PORT="${LITELLM_DB_PORT:-5433}"
 PROXY_PORT="${LITELLM_PORT:-4000}"
 CONFIG="${LITELLM_CONFIG:-$ROOT_DIR/litellm/config.yaml}"
+# Keep the development key local by default. Set LITELLM_HOST deliberately when the
+# proxy must accept remote connections, together with a strong LITELLM_MASTER_KEY.
+PROXY_HOST="${LITELLM_HOST:-127.0.0.1}"
 DB_USER="${LITELLM_DB_USER:-litellm}"
 DB_NAME="${LITELLM_DB_NAME:-litellm}"
 DB_URL="${DATABASE_URL:-postgresql://${DB_USER}@127.0.0.1:${DB_PORT}/${DB_NAME}}"
@@ -80,17 +83,20 @@ if ! psql -h 127.0.0.1 -p "$DB_PORT" -U "$DB_USER" -d postgres -Atqc \
     createdb -h 127.0.0.1 -p "$DB_PORT" -U "$DB_USER" "$DB_NAME"
 fi
 
+export DATABASE_URL="$DB_URL"
 SCHEMA="$(python -c 'import os, litellm; print(os.path.join(os.path.dirname(litellm.__file__), "proxy", "schema.prisma"))')"
 if [ ! -f "$(dirname "$SCHEMA")/client.py" ]; then
     prisma generate --schema="$SCHEMA"
 fi
+# LiteLLM distributes a Prisma schema rather than migration files. Apply that schema
+# before starting so the proxy never reaches its dashboard with missing tables.
+prisma db push --schema="$SCHEMA" --skip-generate
 
-export DATABASE_URL="$DB_URL"
 export LITELLM_MASTER_KEY="${LITELLM_MASTER_KEY:-sk-1234}"
 export LITELLM_SALT_KEY="${LITELLM_SALT_KEY:-sk-local-development-only}"
 export STORE_MODEL_IN_DB="${STORE_MODEL_IN_DB:-True}"
 
-litellm --config "$CONFIG" --port "$PROXY_PORT" &
+litellm --config "$CONFIG" --host "$PROXY_HOST" --port "$PROXY_PORT" &
 proxy_pid=$!
 printf '%s\n' "$proxy_pid" > "$PIDFILE"
 cleanup() {
