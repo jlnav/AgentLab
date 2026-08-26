@@ -8,7 +8,6 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 # Environment providing the claude CLI and the Python packages in requirements.txt.
-# source "$HOME/miniconda3/etc/profile.d/conda.sh" && conda activate agentlab
 export PATH="$HOME/.local/bin:$PATH"
 
 # What this installation has available -- model gateways, credentials. Anything below
@@ -18,8 +17,6 @@ export CAMPAIGN="$(basename "$PWD")"
 export USER_NAME="${USER_NAME:-$USER}"
 
 # Jobs take about a second, so a run that proves the machinery works is minutes.
-# Enough for a sweep and then some refinement: one round would not show what a campaign
-# does. Jobs here are a second each, so the budget bounds turns, not money.
 export MAX_SUBMITS=16
 export MAX_RUNTIME=900
 
@@ -31,8 +28,8 @@ export MAX_RUNTIME=900
 #
 # docs/llm.md covers what serves the second model.
 export CRITIC_MODEL="${CRITIC_MODEL:-}"
-# When there is a critic: judge the numbers, not everything the write-up says. A short
-# run says a lot that no recorded row can settle.
+
+# Critic level. Only applies when there is a critic
 export CRITIC_LEVEL="${CRITIC_LEVEL:-light}"
 
 export NOTIFY_START=true
