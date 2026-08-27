@@ -224,21 +224,61 @@ def _fmt_uptime(secs):
     return f"{m}m"
 
 
+# How long to let the context call run before giving up on it. A campaign with short
+# rounds can set a shorter one, so the figures are either current or absent.
+CONTEXT_TIMEOUT = float(os.environ.get("CONTEXT_TIMEOUT", "60"))
+
+
 async def _context_usage(client):
-    """Best-effort /context data (model, tokens, window, pct) via the SDK method that
-    backs the CLI /context command. Returns the dict or None on failure."""
+    """The /context figures -- model, tokens, window, pct. None if it is slow or fails."""
     try:
-        return await client.get_context_usage()
-    except Exception as e:
-        print(f"[context] get_context_usage failed (ignored): {e}", flush=True)
+        return await asyncio.wait_for(client.get_context_usage(), CONTEXT_TIMEOUT)
+    except asyncio.TimeoutError:
+        print("[context] no data", flush=True)
         return None
+    except Exception as e:
+        print(f"[context] no data ({e})", flush=True)
+        return None
+
+
+_context_task = None        # the in-flight context lookup, if any
+
+
+def _refresh_context(client):
+    """Ask for the context figures without making the round wait for them. One lookup
+    at a time: while one is running, later rounds go without rather than queue."""
+    global _context_task
+    if _context_task is not None and not _context_task.done():
+        return
+    _context_task = asyncio.create_task(_record_context(client))
+
+
+async def _record_context(client):
+    """Record what the context call returns, whenever it returns."""
+    ctx = _as_context(await _context_usage(client))
+    if not ctx:
+        return
+    _last_context.update(ctx)
+    _write_meta(context_tokens=ctx["tokens"], context_window=ctx["window"],
+                context_pct=ctx["pct"], **({"model": ctx["model"]} if ctx["model"] else {}))
+
+
+def _as_context(usage):
+    """The /context answer in the shape the rest of the run records."""
+    if not usage or usage.get("totalTokens") is None:
+        return None
+    return {"tokens": usage.get("totalTokens"), "window": usage.get("rawMaxTokens"),
+            "pct": usage.get("percentage"), "model": usage.get("model")}
+
+
+_last_context = {}          # tokens/window/pct/model, from the most recent turn
 
 
 async def _post_scheduled_status(client, round_num, start_time):
     """Post the fixed-metrics scheduled status line to Slack (harness-owned, deterministic)."""
-    u = await _context_usage(client) or {}
+    u = _last_context
     model = u.get("model") or "?"
-    tok, win, pct = u.get("totalTokens"), u.get("rawMaxTokens"), u.get("percentage")
+    tok, win, pct = u.get("tokens"), u.get("window"), u.get("pct")
     ctx = (f"ctx ~{tok}/{win} (~{pct:.0f}%)"
            if tok is not None and win and pct is not None else "ctx n/a")
     slack_notify(f":calendar: Scheduled Status — {model}, "
@@ -810,7 +850,8 @@ _session_id = None          # this run's Claude session, for reopening it later
 
 
 async def drain_turn(client, round_num):
-    """Print the assistant's output for one turn (until its ResultMessage)."""
+    """Print the assistant's output for one turn (until its ResultMessage), and start
+    a context lookup for the status pane, which the turn does not wait for."""
     async for message in client.receive_response():
         if isinstance(message, AssistantMessage):
             # A subagent's own turns arrive on this stream as well, carrying the id of
@@ -845,6 +886,7 @@ async def drain_turn(client, round_num):
                 _session_id = sid
                 _write_meta(session_id=sid, session_cwd=SCRIPT_DIR)
             print(f"\n[round {round_num} turn end] {message.subtype}", flush=True)
+    _refresh_context(client)
 
 
 async def main():
@@ -913,12 +955,15 @@ async def main():
 
     try:
         async with ClaudeSDKClient(options=options) as client:
-            usage = await _context_usage(client) or {}
-            model = usage.get("model") or "?"
-            if usage.get("totalTokens") is not None:
-                _write_meta(context_tokens=usage.get("totalTokens"),
-                            context_window=usage.get("rawMaxTokens"),
-                            context_pct=usage.get("percentage"))
+            # Before any turn has run: what the prompt, the tools and the memory
+            # files already cost, which is where every run starts from.
+            start = _as_context(await _context_usage(client))
+            model = (start or {}).get("model") or AGENT_MODEL or "?"
+            if start:
+                _last_context.update(start)
+                _write_meta(context_tokens=start["tokens"],
+                            context_window=start["window"],
+                            context_pct=start["pct"])
             print(f"Agent started -- {SYSTEM}{ROLE_NOTE} · model {model}", flush=True)
             _write_meta(model=model)
             if NOTIFY_START:
@@ -1019,13 +1064,6 @@ async def main():
                     last_records = _record_texts()
                     tools.cycle_done_pending()
                     answering_critic = False
-                # A long run fills its context, and how full it is decides whether it
-                # can keep going. Recorded each turn so a watcher can show it.
-                u = await _context_usage(client) or {}
-                if u.get("totalTokens") is not None:
-                    _write_meta(context_tokens=u.get("totalTokens"),
-                                context_window=u.get("rawMaxTokens"),
-                                context_pct=u.get("percentage"))
                 new_submits = tools.submit_count() - submits_before
                 print(f"[round {round_num}] new_submits={new_submits} "
                       f"in_flight={tools.jobs_in_flight()} pending={tools.pending_count()}",
@@ -1140,6 +1178,9 @@ async def main():
         print("Cancelled -- running graceful shutdown.", flush=True)
     finally:
         beat_task.cancel()
+        # Its answer is of no use once the run has ended.
+        if _context_task is not None and not _context_task.done():
+            _context_task.cancel()
         # Record the outcome and clear the liveness marks FIRST. Shutting an executor
         # down can block (a local job runs for as long as it runs), and if that
         # happens the run must still end up correctly recorded rather than frozen as
