@@ -25,6 +25,7 @@ PATH = os.path.join(LAB_DIR, "lab.yaml")
 # is not among them: it is built, below, out of the bin, the config and the port.
 AS_ENV = {
     "litellm-url": "CRITIC_BASE_URL",
+    "litellm-config": "LITELLM_CONFIG",
     "litellm-key-file": "CRITIC_API_KEY_FILE",
     "slack-channel": "SLACK_CHANNEL",
     "engineer-slack-channel": "ENGINEER_SLACK_CHANNEL",

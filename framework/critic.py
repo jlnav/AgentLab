@@ -127,26 +127,30 @@ def gateway_up():
         return bool(_served_models())
 
 
-def ensure_gateway():
-    """Start the lab's model gateway if a critic was asked for and nothing is serving.
+def ensure_gateway(needed=False):
+    """Start the lab's model gateway if something needs it and nothing is serving.
+
+    The gateway converts between the Messages API and a backend that does not speak
+    it, so it is needed by whoever is on a model behind it -- the critic, the agent,
+    or both. `needed` is the caller's own claim on it; a critic asks for itself.
 
     A proxy is a lab's own thing -- its path, its config, its port -- so the lab says
     how to start it and this only decides whether it needs starting. Returns a line
     about what happened, or None when there was nothing to do."""
     start = (os.environ.get("CRITIC_GATEWAY_START") or "").strip()
-    if not MODEL_SETTING or not start or gateway_up():
+    if not (MODEL_SETTING or needed) or not start or gateway_up():
         return None
     wait = int(os.environ.get("CRITIC_GATEWAY_WAIT", "60"))
     try:
         subprocess.Popen(shlex.split(start), start_new_session=True,
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except Exception as e:
-        return f"could not start the critic gateway (ignored): {e}"
+        return f"could not start the model gateway (ignored): {e}"
     for _ in range(wait):
         time.sleep(1)
         if gateway_up():
-            return f"started the critic gateway at {BASE_URL}"
-    return (f"started the critic gateway but {BASE_URL} did not answer within "
+            return f"started the model gateway at {BASE_URL}"
+    return (f"started the model gateway but {BASE_URL} did not answer within "
             f"{wait}s; continuing without it")
 
 

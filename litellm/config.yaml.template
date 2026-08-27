@@ -3,11 +3,27 @@
 # docs/llm.md explains the two litellm_settings and how to check a model works.
 #
 # lab.yaml decides whether the proxy runs and where; this file is what it reaches.
+#
+# Name an entry after the model it serves, not the gateway it comes through: a lab
+# usually reaches several models on one backend, and the name is what a campaign asks
+# for (CRITIC_MODEL=gpt-sol, AGENT_MODEL=gpt-sol).
 
 model_list:
-  - model_name: my-model            # what a campaign asks for: CRITIC_MODEL=my-model
+  - model_name: gpt-sol
     litellm_params:
-      model: openai/<upstream-model-name>
+      model: openai/GPT-5.6 Sol
+      api_base: https://backend.example/v1
+      api_key: <key>
+
+  - model_name: gpt-luna
+    litellm_params:
+      model: openai/GPT-5.6 Luna
+      api_base: https://backend.example/v1
+      api_key: <key>
+
+  - model_name: gpt-terra
+    litellm_params:
+      model: openai/GPT-5.6 Terra
       api_base: https://backend.example/v1
       api_key: <key>
 

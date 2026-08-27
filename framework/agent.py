@@ -645,6 +645,67 @@ def _stop_file_present():
 CHECK_ONLY = "--preflight" in sys.argv
 
 
+GATEWAY_URL = None          # set when this run is routed through the lab's gateway
+
+
+def _on_lab_gateway():
+    """Whether the agent itself is talking to the lab's gateway.
+
+    Compared by URL, not by asking what the gateway serves: it may not be up yet,
+    which is the case this answers.
+    """
+    lab = (os.environ.get("CRITIC_BASE_URL") or "").rstrip("/")
+    mine = (os.environ.get("ANTHROPIC_BASE_URL") or "").rstrip("/")
+    return bool(lab and mine and lab == mine)
+
+
+def _route_to_gateway():
+    """Send the agent through the lab's gateway when AGENT_MODEL is a model it serves.
+
+    Which models it serves is read from its config file rather than asked of it: it
+    may not be running, and whether to start it is what this decides. A name in that
+    file is only reachable through the gateway, so it settles where to send the run
+    whatever ANTHROPIC_BASE_URL happens to say -- that is usually a person's shell
+    pointing at their usual endpoint, which does not serve this model.
+    """
+    url = (os.environ.get("CRITIC_BASE_URL") or "").rstrip("/")
+    conf = os.environ.get("LITELLM_CONFIG") or ""
+    if not AGENT_MODEL or not url or not conf:
+        return
+    try:
+        with open(conf) as f:
+            served = re.findall(r"^\s*-?\s*model_name:\s*(\S+)", f.read(), re.M)
+    except OSError:
+        return
+    if AGENT_MODEL in served:
+        global GATEWAY_URL
+        GATEWAY_URL = url
+        if (os.environ.get("ANTHROPIC_BASE_URL") or "").rstrip("/") == url:
+            return
+        # The critic and the framework's own checks read this; the CLI does not, which
+        # _gateway_settings_file handles.
+        os.environ["ANTHROPIC_BASE_URL"] = url
+        print(f"gateway: {AGENT_MODEL} is served by {url} — routing the agent there",
+              flush=True)
+
+
+def _gateway_settings_file():
+    """A settings file pointing Claude Code at the gateway, or None.
+
+    The CLI takes ANTHROPIC_BASE_URL from Claude Code's own settings in preference to
+    the environment it was started in, so a person whose settings name their usual
+    endpoint would go there whatever this process sets. A file passed as --settings
+    outranks both.
+    """
+    if not GATEWAY_URL:
+        return None
+    os.makedirs(RUN_DIR, exist_ok=True)
+    path = os.path.join(RUN_DIR, "gateway_settings.json")
+    with open(path, "w") as f:
+        json.dump({"env": {"ANTHROPIC_BASE_URL": GATEWAY_URL}}, f)
+    return path
+
+
 def preflight():
     """Verify everything this run needs BEFORE starting. Fail fast with a clear
     message instead of discovering a missing piece mid-run and spinning."""
@@ -714,12 +775,16 @@ def preflight():
         sys.exit(1)
     backend = "endpoint online" if tools.HAS_REMOTE else "local execution only"
     print(f"preflight OK: task={tools.TASK_DIR}, method.md, WORKSPACE_DIR, {backend}.", flush=True)
+    # The gateway converts between the Messages API and a backend that does not speak
+    # it. The agent needs it whenever it is pointed at one, whether or not there is a
+    # critic: a run on a non-Anthropic model goes through the same proxy.
+    global CRITIC_MODEL, CRITIC_LABEL
+    _route_to_gateway()
+    note = critic.ensure_gateway(needed=_on_lab_gateway())
+    if note:
+        print(f"gateway: {note}", flush=True)
     # The critic is resolved here rather than at first use: a campaign that needs its
     # cycles reviewed should fail now, not in round twelve.
-    global CRITIC_MODEL, CRITIC_LABEL
-    note = critic.ensure_gateway()
-    if note:
-        print(f"critic: {note}", flush=True)
     try:
         CRITIC_MODEL, CRITIC_LABEL = critic.resolve(
             AGENT_MODEL or os.environ.get("ANTHROPIC_MODEL", ""))
@@ -797,6 +862,7 @@ async def main():
         # which decides nothing in a run with nobody there to ask.
         tools=agent_tools(),
         **({"model": AGENT_MODEL} if AGENT_MODEL else {}),
+        **({"settings": _gateway_settings_file()} if GATEWAY_URL else {}),
         agents=subagent_defs(),
         permission_mode="bypassPermissions",
         system_prompt=system_prompt,

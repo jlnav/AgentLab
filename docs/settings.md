@@ -102,7 +102,7 @@ what a gateway makes available.
 | `CRITIC_BASE_URL` | the agent's `ANTHROPIC_BASE_URL` | gateway serving the critic, when it is not where the agent goes |
 | `CRITIC_API_KEY` | the agent's `ANTHROPIC_API_KEY`, else what Claude Code is configured with (`settings.json`, including `apiKeyHelper`) | credential for that gateway |
 | `CRITIC_API_KEY_FILE` | — | a file holding that credential instead, as `SLACK_WEBHOOK_FILE` does |
-| `CRITIC_GATEWAY_START` | — | command that starts the lab's model gateway, run at preflight only when a critic was asked for and nothing is already serving |
+| `CRITIC_GATEWAY_START` | — | command that starts the lab's model gateway, run at preflight when something needs it and nothing is already serving. Something needs it when a critic was asked for, or when `ANTHROPIC_BASE_URL` is the gateway's own URL — the agent is on a model behind it |
 | `CRITIC_GATEWAY_WAIT` | 60 | seconds to wait for that gateway to answer before carrying on without it |
 | `CRITIC_MAX_TOKENS` | 8000 | cap on one review; a reasoning model spends much of it thinking |
 
