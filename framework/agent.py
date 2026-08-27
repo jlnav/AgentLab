@@ -434,6 +434,12 @@ def agent_tools():
     return list(dict.fromkeys(tools.tool_names() + claude_tools()))
 
 
+# Which model the agent runs as. Unset leaves it to Claude Code. Set it to test a
+# campaign on a cheaper model before giving a machine to a long run. An alias
+# ('sonnet', 'opus') or a full model name; which ones work depends on the lab's gateway.
+AGENT_MODEL = os.environ.get("AGENT_MODEL", "").strip()
+
+
 # One worked example of delegating: a subagent that reads a long record and returns
 # what the run needs from it, so the record itself never enters the main agent's
 # context. It is offered, not imposed -- the agent may use it, use a built-in type, or
@@ -715,7 +721,8 @@ def preflight():
     if note:
         print(f"critic: {note}", flush=True)
     try:
-        CRITIC_MODEL, CRITIC_LABEL = critic.resolve(os.environ.get("ANTHROPIC_MODEL", ""))
+        CRITIC_MODEL, CRITIC_LABEL = critic.resolve(
+            AGENT_MODEL or os.environ.get("ANTHROPIC_MODEL", ""))
     except critic.CriticUnavailable as e:
         print(f"preflight FAILED: {e}", flush=True)
         sys.exit(1)
@@ -723,12 +730,13 @@ def preflight():
     # The names, not a count: what a campaign is actually given is otherwise only
     # discoverable by reading the framework. Split in two because the halves are
     # decided by different things -- the job tools by what the task defines, the rest
-    # by the framework's defaults and AGENT_TOOLS_EXTRA.
+    # by the framework's defaults and AGENT_TOOLS.
     given = agent_tools()
     job = [t.rsplit("__", 1)[-1] for t in given if t.startswith("mcp__")]
     claude = [t for t in given if not t.startswith("mcp__")]
     print(f"job tools:    {' '.join(job)}", flush=True)
     print(f"claude tools: {' '.join(claude)}", flush=True)
+    print(f"model:        {AGENT_MODEL or '(Claude Code default)'}", flush=True)
     if not CHECK_ONLY:
         _start_watcher()
 
@@ -788,6 +796,7 @@ async def main():
         # allowed_tools only says which calls proceed without someone being asked,
         # which decides nothing in a run with nobody there to ask.
         tools=agent_tools(),
+        **({"model": AGENT_MODEL} if AGENT_MODEL else {}),
         agents=subagent_defs(),
         permission_mode="bypassPermissions",
         system_prompt=system_prompt,

@@ -116,9 +116,9 @@ refuses it. Add it where the lab's gateway does.
 | | default | |
 |---|---|---|
 | `AGENT_TOOLS` | — | change that set: `+WebSearch -Write` adjusts it, a plain list (`Read Grep Bash`) replaces it. One form or the other, not both. The job tools are always given — they come from what the task defines. |
+| `AGENT_MODEL` | — | which model the agent runs as. Unset leaves it to Claude Code. An alias (`sonnet`, `opus`) or a full model name. |
 
-`./run.sh --preflight` runs the checks and stops, printing both halves of the list, so
-what a campaign is actually given can be seen before a machine is given to it.
+`./run.sh --preflight` runs the checks, prints the tools and the model, and stops.
 
 Less often changed.
 
