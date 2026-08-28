@@ -32,12 +32,10 @@ litellm/       config.yaml — non-Anthropic models this lab can reach, through
 
 framework/     the agent loop and the tools it calls. Not edited per campaign.
 
-methods/       how the agent goes about the work, and what it records. One is
-               copied into a campaign at setup: quick.md, standard.md, or
-               research.md for hypothesis cycles with a written-up journal.
-               How a run works whatever the method — the tools, the records the
-               runner reads, how a run ends — is framework/framework_prompt.md,
-               which every run is given alongside its method.
+methods/       how the agent goes about the work, and what it records — such as
+               quick.md, standard.md, or research.md for hypothesis cycles with
+               a written-up journal. Setup copies one into your campaign as
+               method.md, which is yours to edit or replace.
 
 systems/       one file per machine: module line, proxy, cache paths, queue
                defaults — whatever is true for everyone there.
