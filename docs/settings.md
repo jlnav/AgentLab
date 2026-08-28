@@ -2,6 +2,48 @@
 
 Every setting AgentLab reads, and where it comes from.
 
+Three places, in the order they are read:
+
+| | |
+|---|---|
+| `lab.yaml` | what this lab runs, and where its own things are. Copy `lab.yaml.template` |
+| `notifiers/<transport>.env` | credentials and reader behaviour for the transport, default `notifiers/slack.env`; `NOTIFIER` picks another |
+| `campaigns/<name>/run.sh` | what one campaign wants, which is the last word |
+
+A value already in the environment wins over all three, so a setting given on the
+command line holds for that run only.
+
+## `lab.yaml`
+
+The lab, at a glance: `bin/lab.sh start | stop | status` runs what is switched on here.
+Untracked, because it is this installation's, not the framework's.
+
+| | | |
+|---|---|---|
+| `bridge` | off | forward Slack messages to the secretary and the boards |
+| `secretary` | off | answer from the records, start and stop runs |
+| `engineer` | off | this repository, worked on from a channel of its own |
+| `litellm` | off | a LiteLLM proxy, for using non-Anthropic models. `when-needed` leaves it to a run's preflight, which starts it only if one of them was asked for and nothing is answering |
+| `litellm-bin` | — | the `litellm` executable, from the venv `docs/llm.md` builds |
+| `litellm-config` | `litellm/config.yaml` | which models it reaches |
+| `litellm-url` | — | where it answers: `CRITIC_BASE_URL` |
+| `litellm-key-file` | — | its credential, if not the agent's: `CRITIC_API_KEY_FILE` |
+| `slack-channel` | — | the channel the bridge reads: `SLACK_CHANNEL` |
+| `engineer-slack-channel` | — | the engineer's own channel: `ENGINEER_SLACK_CHANNEL` |
+| `engineer-webhook-file` | — | the webhook bound to it: `ENGINEER_WEBHOOK_FILE` |
+| `engineer-resume` | off | `off` starts a fresh conversation, `last` carries on the one before, `compact` carries it on with the history summarised down first: `ENGINEER_RESUME` |
+| `engineer-allow` | — | Slack user ids that may instruct the engineer, space separated; empty means anyone in the channel: `ENGINEER_ALLOW` |
+| `startable-campaigns` | — | campaigns the secretary may start and stop, space separated: `SLACK_CAMPAIGNS` |
+
+Each line is `name: value`, and the right-hand column is the environment variable it
+sets, which is how everything below it is reachable without this file at all. The
+exception is the proxy's start command, `CRITIC_GATEWAY_START`, which is built from the
+bin, the config and the port in the URL rather than written out — LiteLLM takes the
+rest of its settings from its own config, so there is nothing else for it to hold.
+
+A relative path on a line naming a file is taken from the lab directory, so
+`litellm/config.yaml` means the same thing wherever the command was run from.
+
 ## Environment — set in the campaign's `run.sh`
 
 Required.
@@ -17,6 +59,7 @@ collects what is in flight, writes up, and exits.
 
 | | default | |
 |---|---|---|
+| `RESUME_SESSION` | — | a Claude session id to start from, so a run continues a conversation you had with an agent. Forked, so that transcript is untouched; its whole context comes with it |
 | `MAX_SUBMITS` | 60 | jobs submitted before winding down |
 | `MAX_RUNTIME` | unset | seconds from start before winding down; unset means no limit |
 | `STALL_LIMIT` | unset | seconds with nothing completing before giving up; unset means wait |
@@ -59,9 +102,23 @@ what a gateway makes available.
 | `CRITIC_BASE_URL` | the agent's `ANTHROPIC_BASE_URL` | gateway serving the critic, when it is not where the agent goes |
 | `CRITIC_API_KEY` | the agent's `ANTHROPIC_API_KEY`, else what Claude Code is configured with (`settings.json`, including `apiKeyHelper`) | credential for that gateway |
 | `CRITIC_API_KEY_FILE` | — | a file holding that credential instead, as `SLACK_WEBHOOK_FILE` does |
-| `CRITIC_GATEWAY_START` | — | command that starts the lab's model gateway, run at preflight only when a critic was asked for and nothing is already serving |
+| `CRITIC_GATEWAY_START` | — | command that starts the lab's model gateway, run at preflight when something needs it and nothing is already serving. Something needs it when a critic was asked for, or when `ANTHROPIC_BASE_URL` is the gateway's own URL — the agent is on a model behind it |
 | `CRITIC_GATEWAY_WAIT` | 60 | seconds to wait for that gateway to answer before carrying on without it |
 | `CRITIC_MAX_TOKENS` | 8000 | cap on one review; a reasoning model spends much of it thinking |
+
+What the agent is given to work with. By default: the campaign's own job tools, and
+`Read`, `Write`, `Edit`, `Glob`, `Grep`, `Bash`, `Skill`, `WebFetch`, `Agent`. Left out
+are the CLI's messaging and scheduling tools, and the ones that fork work out from
+under the framework's bookkeeping. `WebSearch` is left out as well: it runs on the API
+server rather than on this machine, so a gateway that does not carry server tools
+refuses it. Add it where the lab's gateway does.
+
+| | default | |
+|---|---|---|
+| `AGENT_TOOLS` | — | change that set: `+WebSearch -Write` adjusts it, a plain list (`Read Grep Bash`) replaces it. One form or the other, not both. The job tools are always given — they come from what the task defines. |
+| `AGENT_MODEL` | — | which model the agent runs as. Unset leaves it to Claude Code. An alias (`sonnet`, `opus`) or a full model name. |
+
+`./run.sh --preflight` runs the checks, prints the tools and the model, and stops.
 
 Less often changed.
 
@@ -80,17 +137,18 @@ Less often changed.
 
 ## Environment — Slack bridge and secretary
 
-One of each per lab, not per campaign. The lab's own values live in
-`notifiers/<transport>.env`, default `notifiers/slack.env`, which the two launchers
-read; `NOTIFIER` selects a different file. A value already in the environment wins.
+One of each per lab, not per campaign. Channels and startable campaigns come from
+`lab.yaml`; the rest from `notifiers/<transport>.env`, default `notifiers/slack.env`.
 
 | | default | |
 |---|---|---|
 | `WORKSPACE_ROOT` | `workspace/` | scanned for campaigns |
 | `SLACK_CHANNEL` | — | channel ID the bridge reads |
-| `SLACK_BOT_TOKEN_FILE` | `~/.slack_bot_token` | bot token, needs `channels:history` |
+| `SLACK_BOT_TOKEN_FILE` | `~/.slack_bot_token` | bot token, needs `channels:history` for a public channel or `groups:history` for a private one |
 | `SLACK_BOT_NAME` | `@cas_agent` | plain-text mention fallback |
 | `SLACK_FETCH_POLL` | 5 | seconds between Slack checks; dominates end-to-end latency |
+| `RESUME_SESSION` | — | a session id, or `last` / `compact` for the engineer's own previous conversation. Set from `engineer-resume` |
+| `SLACK_ALLOW` | — | Slack user ids whose messages this bridge forwards, space separated; empty forwards everyone's. Set from `engineer-allow` for the engineer's bridge, so people can watch its channel without driving it |
 | `SLACK_READ_ALL` | false | forward every channel message to the secretary, which decides which are for it; mentions only when the secretary is down |
 | `SLACK_CAMPAIGNS` | — | campaigns the secretary may start and stop on request; empty means none |
 | `START_COOLDOWN` | 300 | seconds before the same campaign can be started again |
@@ -105,6 +163,10 @@ Time limits that bound a job rather than a launch live here.
 | | |
 |---|---|
 | `campaigns/<name>/campaign.json` | which system, the model, `target.timeout` — seconds a job's own command may run |
+| `lab.yaml` | what this lab runs and where its own things are, as above |
+| `framework/framework_prompt.md` | how a run works whatever its method: the tools, the records the runner reads, and the two ways a run ends. Given to every run alongside its `method.md` |
+| `litellm/config.yaml` | the non-Anthropic models this lab can reach, and the keys for them. Copy `litellm/config.yaml.template`; `docs/llm.md` explains the settings that matter |
+| `bin/review_campaign.sh <campaign>` | reads a campaign before it runs and reports what would waste a machine or a budget, appending to `campaigns/<name>/EFFICIENCY-REVIEW.md`; `framework/review_campaign_prompt.md` is what it asks |
 | `systems/<system>.json` | module line, proxy, cache paths, `ppn`, `max_concurrent`, and `bucket_defaults` including the batch allocation's `walltime` |
 | `users/<you>/<system>.json` | endpoint UUID, account to charge, `work_dir` on the compute system |
 

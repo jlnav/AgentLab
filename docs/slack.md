@@ -15,7 +15,9 @@ bound to one workspace and one channel. POST JSON to it and the message appears 
 There is no authentication header — the URL is the credential.
 
 **The bot token**, `xoxb-…`, is presented as `Authorization: Bearer` on calls to Slack's
-Web API. Reading a channel needs the `channels:history` scope.
+Web API. Reading a channel needs the scope for its kind: `channels:history` for a
+public channel, `groups:history` for a private one. A bot reads only channels it is a
+member of, so a private channel has to invite it.
 
 Keep both outside the repository, in `~/.slack_webhook` and `~/.slack_bot_token`.
 
@@ -70,7 +72,7 @@ An unaddressed line is answered by every agent reading that board, which is why 
 relay always names its reader.
 
 It can also start and stop runs, for campaigns named in `SLACK_CAMPAIGNS`:
-`framework/start_run.sh <campaign>` and `framework/stop_run.sh <handle>`. Both refuse
+`bin/start_run.sh <campaign>` and `bin/stop_run.sh <handle>`. Both refuse
 anything not on that list; a start also refuses a campaign that already has a live
 agent or was started within `START_COOLDOWN`, and a stop always drains. A request made
 without mentioning the bot is confirmed in the channel before either runs.
@@ -84,20 +86,22 @@ in `list_agents.sh`, alongside the Claude session id for reading a finished run 
 | | runs where | needs |
 |---|---|---|
 | campaign agent | any machine, one per campaign | `~/.slack_webhook` |
-| bridge, `run_slack_bridge.sh` | one per lab | `~/.slack_bot_token`, `SLACK_CHANNEL` |
-| secretary, `run_secretary.sh` | one per lab | `~/.slack_webhook` |
+| bridge | one per lab | `~/.slack_bot_token`, the channel ID |
+| secretary | one per lab | `~/.slack_webhook` |
+
+Both are started by `bin/lab.sh start`, which runs whatever `lab.yaml` switches on.
 
 Every post carries `*[$SLACK_PREFIX]*` — the campaign and agent for a research agent,
 `secretary` for the secretary — applied in `slack_notify.sh` so one channel shared by
 several campaigns stays readable.
 
-The channel ID and the other settings the two lab processes read live in
-`notifiers/slack.env`, copied from `notifiers/slack.env.template` and untracked. The
-credentials stay where they are, outside the repository.
+The channel ID is in `lab.yaml` and the bot name and credential paths in
+`notifiers/slack.env`, each copied from the template beside it and untracked. The
+credentials themselves stay where they are, outside the repository.
 
 Which is why joining a lab is a one-line setup: you need the channel and the webhook URL,
 and nothing else. Creating the app, issuing the token and running the two processes
 happens once, by whoever hosts the lab.
 
 Neither credential is tied to the machine that created it. Moving a lab means copying the
-two files and starting the bridge and secretary elsewhere.
+two files and running `bin/lab.sh start` elsewhere.

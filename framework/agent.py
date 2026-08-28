@@ -25,6 +25,7 @@ from datetime import datetime
 from claude_agent_sdk import (
     ClaudeSDKClient,
     ClaudeAgentOptions,
+    AgentDefinition,
     AssistantMessage,
     ResultMessage,
 )
@@ -159,6 +160,10 @@ FINALIZE_PROMPT = (
     "current cycle: write it up in the records your method keeps, and note anything a "
     "later run needs to pick up where you left off. Submit no new work."
 )
+# A session id to start from. Its whole conversation becomes this run's context, which
+# costs what it costs and brings any stale conclusions with it, so it is off by default.
+# The session must belong to this user on this machine.
+RESUME_SESSION = (os.environ.get("RESUME_SESSION") or "").strip()
 MAX_ROUNDS = 500          # backstop against a runaway loop
 MAX_EMPTY_ROUNDS = 3      # consecutive idle rounds (no work proposed) before giving up
 MAX_RUNTIME = int(os.environ["MAX_RUNTIME"]) if os.environ.get("MAX_RUNTIME") else None  # total agent wallclock (s); None = no time limit
@@ -219,21 +224,61 @@ def _fmt_uptime(secs):
     return f"{m}m"
 
 
+# How long to let the context call run before giving up on it. A campaign with short
+# rounds can set a shorter one, so the figures are either current or absent.
+CONTEXT_TIMEOUT = float(os.environ.get("CONTEXT_TIMEOUT", "60"))
+
+
 async def _context_usage(client):
-    """Best-effort /context data (model, tokens, window, pct) via the SDK method that
-    backs the CLI /context command. Returns the dict or None on failure."""
+    """The /context figures -- model, tokens, window, pct. None if it is slow or fails."""
     try:
-        return await client.get_context_usage()
-    except Exception as e:
-        print(f"[context] get_context_usage failed (ignored): {e}", flush=True)
+        return await asyncio.wait_for(client.get_context_usage(), CONTEXT_TIMEOUT)
+    except asyncio.TimeoutError:
+        print("[context] no data", flush=True)
         return None
+    except Exception as e:
+        print(f"[context] no data ({e})", flush=True)
+        return None
+
+
+_context_task = None        # the in-flight context lookup, if any
+
+
+def _refresh_context(client):
+    """Ask for the context figures without making the round wait for them. One lookup
+    at a time: while one is running, later rounds go without rather than queue."""
+    global _context_task
+    if _context_task is not None and not _context_task.done():
+        return
+    _context_task = asyncio.create_task(_record_context(client))
+
+
+async def _record_context(client):
+    """Record what the context call returns, whenever it returns."""
+    ctx = _as_context(await _context_usage(client))
+    if not ctx:
+        return
+    _last_context.update(ctx)
+    _write_meta(context_tokens=ctx["tokens"], context_window=ctx["window"],
+                context_pct=ctx["pct"], **({"model": ctx["model"]} if ctx["model"] else {}))
+
+
+def _as_context(usage):
+    """The /context answer in the shape the rest of the run records."""
+    if not usage or usage.get("totalTokens") is None:
+        return None
+    return {"tokens": usage.get("totalTokens"), "window": usage.get("rawMaxTokens"),
+            "pct": usage.get("percentage"), "model": usage.get("model")}
+
+
+_last_context = {}          # tokens/window/pct/model, from the most recent turn
 
 
 async def _post_scheduled_status(client, round_num, start_time):
     """Post the fixed-metrics scheduled status line to Slack (harness-owned, deterministic)."""
-    u = await _context_usage(client) or {}
+    u = _last_context
     model = u.get("model") or "?"
-    tok, win, pct = u.get("totalTokens"), u.get("rawMaxTokens"), u.get("percentage")
+    tok, win, pct = u.get("tokens"), u.get("window"), u.get("pct")
     ctx = (f"ctx ~{tok}/{win} (~{pct:.0f}%)"
            if tok is not None and win and pct is not None else "ctx n/a")
     slack_notify(f":calendar: Scheduled Status — {model}, "
@@ -366,9 +411,134 @@ def load_method():
         return f.read()
 
 
+def load_framework():
+    """How a run works whatever method it follows: the tools, the records the runner
+    reads, and the two ways a run ends. Not copied into a campaign -- a campaign owns
+    its method, but the framework it runs in is the framework's to state."""
+    with open(os.path.join(SCRIPT_DIR, "framework_prompt.md")) as f:
+        return f.read()
+
+
 def load_user_prompt():
     with open(os.path.join(CAMPAIGN_DIR, USER_PROMPT_FILE)) as f:
         return f.read()
+
+
+# What the agent works with: its own job tools, and the Claude Code tools that suit a
+# run nobody is watching. Reading, writing, editing, shell, skills, the web, and Agent
+# -- a campaign should reach a facility's own procedures, look up what a library's
+# defaults actually are, and hand a long read to a subagent, the way anyone else would.
+# Agent is here rather than behind a setting because delegating is the agent's call to
+# make, and a prompt asking for it should work without the campaign being configured
+# for it first.
+#
+# Left out are the tools that belong to an interactive session rather than a campaign:
+# the CLI's messaging and scheduling, where this run posts through its own notify tool
+# and the runner owns its loop, and the ones that fork work out from under the
+# framework's bookkeeping. WebSearch is left out too: it runs on the API server rather
+# than here, so a gateway that does not carry server tools refuses it, and some sites
+# are behind one. AGENT_TOOLS changes this set.
+BASE_TOOLS = ["Read", "Write", "Edit", "Glob", "Grep", "Bash", "Skill",
+              "WebFetch", "Agent"]
+AGENT_TOOLS = os.environ.get("AGENT_TOOLS", "").strip()
+
+
+def claude_tools():
+    """The Claude Code tools this run gives the agent.
+
+    AGENT_TOOLS unset leaves the defaults. Entries all prefixed + or - adjust them;
+    entries with no prefix are the set, for a campaign that wants to say exactly what
+    it works with. Mixing the two forms is refused rather than guessed at, since either
+    reading of "Read -Bash" silently loses something the campaign asked for.
+    """
+    entries = [t for t in re.split(r"[,\s]+", AGENT_TOOLS) if t]
+    if not entries:
+        return list(BASE_TOOLS)
+    signed = [e for e in entries if e[0] in "+-"]
+    if signed and len(signed) != len(entries):
+        raise ValueError("AGENT_TOOLS mixes +/- adjustments with plain tool names; "
+                         "use one form or the other")
+    if not signed:
+        return list(dict.fromkeys(entries))
+    out = list(BASE_TOOLS)
+    for e in entries:
+        name = e[1:]
+        if not name:
+            raise ValueError(f"AGENT_TOOLS entry '{e}' names no tool")
+        if e[0] == "+":
+            if name not in out:
+                out.append(name)
+        elif name in out:
+            out.remove(name)
+    return out
+
+
+def agent_tools():
+    """Every tool this run is given, job tools first.
+
+    The job tools are not part of the choice: they come from what the campaign's own
+    task.py defines, and a run without them cannot submit anything.
+    """
+    return list(dict.fromkeys(tools.tool_names() + claude_tools()))
+
+
+# Which model the agent runs as. Unset leaves it to Claude Code. Set it to test a
+# campaign on a cheaper model before giving a machine to a long run. An alias
+# ('sonnet', 'opus') or a full model name; which ones work depends on the lab's gateway.
+AGENT_MODEL = os.environ.get("AGENT_MODEL", "").strip()
+
+
+# One worked example of delegating: a subagent that reads a long record and returns
+# what the run needs from it, so the record itself never enters the main agent's
+# context. It is offered, not imposed -- the agent may use it, use a built-in type, or
+# not delegate at all, and a campaign prompt can ask for something else.
+#
+# The whole definition lives in one file, front matter and prompt, in the form a
+# subagent is normally written in. It is read here rather than from `.claude/agents/`
+# because the SDK only loads that directory when `setting_sources` includes the
+# project, which would bring the rest of a project's settings with it.
+SUBAGENT_DIR = os.environ.get("SUBAGENT_DIR") or SCRIPT_DIR
+SUBAGENT_FILES = ["subagent_reader.md"]
+
+
+def _parse_subagent(path):
+    """A front-matter subagent file -> (name, AgentDefinition)."""
+    with open(path) as f:
+        text = f.read()
+    if not text.startswith("---"):
+        raise ValueError(f"{path}: no front matter")
+    _, front, body = text.split("---", 2)
+    meta = {}
+    for line in front.strip().splitlines():
+        if ":" in line:
+            k, v = line.split(":", 1)
+            meta[k.strip()] = v.strip()
+    fields = {}
+    if meta.get("tools"):
+        fields["tools"] = [t for t in re.split(r"[,\s]+", meta["tools"]) if t]
+    if meta.get("model"):
+        fields["model"] = meta["model"]
+    if "background" in meta:
+        # A blocking call puts the answer in the tool result, so the turn that asked
+        # can act on it. A background call returns a launch stub and the answer lands
+        # some turns later.
+        fields["background"] = meta["background"].lower() == "true"
+    return meta["name"], AgentDefinition(description=meta["description"],
+                                         prompt=body.strip(), **fields)
+
+
+def subagent_defs():
+    """Subagent types this run offers, or None if none could be read."""
+    defs = {}
+    for fname in SUBAGENT_FILES:
+        path = os.path.join(SUBAGENT_DIR, fname)
+        try:
+            name, d = _parse_subagent(path)
+        except (OSError, ValueError, KeyError) as e:
+            print(f"[subagent] skipped {fname}: {e}", flush=True)
+            continue
+        defs[name] = d
+    return defs or None
 
 
 # --- Run directory: one permanent dir per run -----------------------------------
@@ -386,8 +556,12 @@ _PHASES = {
     "notify": "posting to Slack", "cycle_done": "closing the cycle",
     "Read": "reading records", "Grep": "reading records", "Glob": "reading records",
     "Write": "writing up", "Edit": "writing up", "NotebookEdit": "writing up",
-    "Bash": "running analysis", "Task": "delegating",
+    "Bash": "running analysis",
 }
+# Which subagent each Agent call started, keyed by the call's id, so a turn arriving
+# from a subagent can be named after it. These labels describe the agent's own work,
+# and a subagent is doing a different job with the same tools.
+_DELEGATES = {}
 
 
 def _set_phase(text):
@@ -513,6 +687,73 @@ def _stop_file_present():
     return os.path.exists(os.path.join(RUN_DIR, "stop"))
 
 
+# `--preflight` runs the checks and stops, for someone deciding whether a campaign is
+# ready before giving a machine to it for days. It leaves no trace of a run: the log is
+# not opened, so the last run's log survives, and no watcher or Slack post is made.
+CHECK_ONLY = "--preflight" in sys.argv
+
+
+GATEWAY_URL = None          # set when this run is routed through the lab's gateway
+
+
+def _on_lab_gateway():
+    """Whether the agent itself is talking to the lab's gateway.
+
+    Compared by URL, not by asking what the gateway serves: it may not be up yet,
+    which is the case this answers.
+    """
+    lab = (os.environ.get("CRITIC_BASE_URL") or "").rstrip("/")
+    mine = (os.environ.get("ANTHROPIC_BASE_URL") or "").rstrip("/")
+    return bool(lab and mine and lab == mine)
+
+
+def _route_to_gateway():
+    """Send the agent through the lab's gateway when AGENT_MODEL is a model it serves.
+
+    Which models it serves is read from its config file rather than asked of it: it
+    may not be running, and whether to start it is what this decides. A name in that
+    file is only reachable through the gateway, so it settles where to send the run
+    whatever ANTHROPIC_BASE_URL happens to say -- that is usually a person's shell
+    pointing at their usual endpoint, which does not serve this model.
+    """
+    url = (os.environ.get("CRITIC_BASE_URL") or "").rstrip("/")
+    conf = os.environ.get("LITELLM_CONFIG") or ""
+    if not AGENT_MODEL or not url or not conf:
+        return
+    try:
+        with open(conf) as f:
+            served = re.findall(r"^\s*-?\s*model_name:\s*(\S+)", f.read(), re.M)
+    except OSError:
+        return
+    if AGENT_MODEL in served:
+        global GATEWAY_URL
+        GATEWAY_URL = url
+        if (os.environ.get("ANTHROPIC_BASE_URL") or "").rstrip("/") == url:
+            return
+        # The critic and the framework's own checks read this; the CLI does not, which
+        # _gateway_settings_file handles.
+        os.environ["ANTHROPIC_BASE_URL"] = url
+        print(f"gateway: {AGENT_MODEL} is served by {url} — routing the agent there",
+              flush=True)
+
+
+def _gateway_settings_file():
+    """A settings file pointing Claude Code at the gateway, or None.
+
+    The CLI takes ANTHROPIC_BASE_URL from Claude Code's own settings in preference to
+    the environment it was started in, so a person whose settings name their usual
+    endpoint would go there whatever this process sets. A file passed as --settings
+    outranks both.
+    """
+    if not GATEWAY_URL:
+        return None
+    os.makedirs(RUN_DIR, exist_ok=True)
+    path = os.path.join(RUN_DIR, "gateway_settings.json")
+    with open(path, "w") as f:
+        json.dump({"env": {"ANTHROPIC_BASE_URL": GATEWAY_URL}}, f)
+    return path
+
+
 def preflight():
     """Verify everything this run needs BEFORE starting. Fail fast with a clear
     message instead of discovering a missing piece mid-run and spinning."""
@@ -538,8 +779,15 @@ def preflight():
             problems += list(tools.task.preflight() or [])
         except Exception as e:
             problems.append(f"task preflight() raised: {e}")
+    try:
+        claude_tools()
+    except ValueError as e:
+        problems.append(str(e))
     if not os.path.isfile(method_path()):
         problems.append(f"method.md missing: {method_path()} (how-to-work prompt loaded into the agent)")
+    _fw = os.path.join(SCRIPT_DIR, "framework_prompt.md")
+    if not os.path.isfile(_fw):
+        problems.append(f"framework_prompt.md missing: {_fw}")
     # Fail fast if the Globus Compute endpoint is not online -- otherwise every
     # submit fails with ENDPOINT_NOT_ONLINE and the run does nothing. A task with no
     # remote_fn never reaches the endpoint, so there is nothing to probe.
@@ -553,9 +801,10 @@ def preflight():
                     _nm = _c.get_endpoint_metadata(tools.ENDPOINT_ID).get("name") or tools.ENDPOINT_ID
                 except Exception:
                     _nm = tools.ENDPOINT_ID
-                slack_notify(f":rotating_light: Agent exiting -- Globus Compute "
-                             f"endpoint '{_nm}' is not online (status={_st}). Start it: "
-                             f"globus-compute-endpoint start {_nm} --detach")
+                if not CHECK_ONLY:
+                    slack_notify(f":rotating_light: Agent exiting -- Globus Compute "
+                                 f"endpoint '{_nm}' is not online (status={_st}). Start it: "
+                                 f"globus-compute-endpoint start {_nm} --detach")
                 problems.append(f"Globus Compute endpoint '{_nm}' ({tools.ENDPOINT_ID}) is not online "
                                 f"(status={_st}); start it: globus-compute-endpoint start {_nm} --detach")
         except Exception as e:
@@ -575,34 +824,67 @@ def preflight():
         sys.exit(1)
     backend = "endpoint online" if tools.HAS_REMOTE else "local execution only"
     print(f"preflight OK: task={tools.TASK_DIR}, method.md, WORKSPACE_DIR, {backend}.", flush=True)
+    # The gateway converts between the Messages API and a backend that does not speak
+    # it. The agent needs it whenever it is pointed at one, whether or not there is a
+    # critic: a run on a non-Anthropic model goes through the same proxy.
+    global CRITIC_MODEL, CRITIC_LABEL
+    _route_to_gateway()
+    note = critic.ensure_gateway(needed=_on_lab_gateway())
+    if note:
+        print(f"gateway: {note}", flush=True)
     # The critic is resolved here rather than at first use: a campaign that needs its
     # cycles reviewed should fail now, not in round twelve.
-    global CRITIC_MODEL, CRITIC_LABEL
-    note = critic.ensure_gateway()
-    if note:
-        print(f"critic: {note}", flush=True)
     try:
-        CRITIC_MODEL, CRITIC_LABEL = critic.resolve(os.environ.get("ANTHROPIC_MODEL", ""))
+        CRITIC_MODEL, CRITIC_LABEL = critic.resolve(
+            AGENT_MODEL or os.environ.get("ANTHROPIC_MODEL", ""))
     except critic.CriticUnavailable as e:
         print(f"preflight FAILED: {e}", flush=True)
         sys.exit(1)
     print(f"critic: {CRITIC_LABEL}", flush=True)
-    _start_watcher()
+    # The names, not a count: what a campaign is actually given is otherwise only
+    # discoverable by reading the framework. Split in two because the halves are
+    # decided by different things -- the job tools by what the task defines, the rest
+    # by the framework's defaults and AGENT_TOOLS.
+    given = agent_tools()
+    job = [t.rsplit("__", 1)[-1] for t in given if t.startswith("mcp__")]
+    claude = [t for t in given if not t.startswith("mcp__")]
+    print(f"job tools:    {' '.join(job)}", flush=True)
+    print(f"claude tools: {' '.join(claude)}", flush=True)
+    print(f"model:        {AGENT_MODEL or '(Claude Code default)'}", flush=True)
+    if not CHECK_ONLY:
+        _start_watcher()
 
 
 _session_id = None          # this run's Claude session, for reopening it later
 
 
 async def drain_turn(client, round_num):
-    """Print the assistant's output for one turn (until its ResultMessage)."""
+    """Print the assistant's output for one turn (until its ResultMessage), and start
+    a context lookup for the status pane, which the turn does not wait for."""
     async for message in client.receive_response():
         if isinstance(message, AssistantMessage):
+            # A subagent's own turns arrive on this stream as well, carrying the id of
+            # the Agent call that started them. Name that subagent in the phase, so a
+            # watcher sees who is working rather than the agent's own word for whatever
+            # tool the subagent happens to be using.
+            parent = getattr(message, "parent_tool_use_id", None)
+            who = _DELEGATES.get(parent) if parent else None
             for block in message.content:
                 if hasattr(block, "text"):
                     print(block.text, flush=True)
                 name = getattr(block, "name", None)
-                if name:
-                    bare = name.rsplit("__", 1)[-1]
+                if not name:
+                    continue
+                bare = name.rsplit("__", 1)[-1]
+                if bare == "Agent":
+                    sub = (getattr(block, "input", None) or {}).get("subagent_type")
+                    if sub:
+                        _DELEGATES[getattr(block, "id", None)] = sub
+                    _set_phase(f"round {round_num}: waiting on subagent "
+                               f"{sub or '(unnamed)'}")
+                elif who:
+                    _set_phase(f"round {round_num}: subagent {who} ({bare})")
+                else:
                     _set_phase(f"round {round_num}: {_PHASES.get(bare, bare)}")
         elif isinstance(message, ResultMessage):
             # The session id first becomes known here. Recorded once, so a finished run
@@ -613,11 +895,26 @@ async def drain_turn(client, round_num):
                 _session_id = sid
                 _write_meta(session_id=sid, session_cwd=SCRIPT_DIR)
             print(f"\n[round {round_num} turn end] {message.subtype}", flush=True)
+    _refresh_context(client)
 
 
 async def main():
     system_prompt = load_prompt()
+    system_prompt += "\n\n" + load_framework()
     system_prompt += "\n\n" + load_method()
+    # What runs at once, which the agent cannot discover except by being refused.
+    # Not the job budget: that changes as the run goes, so each submit returns it.
+    at_once = []
+    if tools.HAS_REMOTE:
+        at_once.append(f"jobs running at once: {tools.MAX_CONCURRENT}")
+    if tools.HAS_LOCAL:
+        at_once.append(f"local jobs running at once: {tools.LOCAL_MAX_CONCURRENT}")
+    if MAX_RUNTIME:
+        at_once.append(f"wall clock for this run: {MAX_RUNTIME}s")
+    system_prompt += ("\n\n# This run\n" + "\n".join(at_once)
+                      + "\n\nSubmitting more at once than that queues the rest, which "
+                        "tells you nothing sooner. Each submit answers with how much of "
+                        "the run's job budget it has used.")
     system_prompt += f"\n\n# This agent\nSYSTEM={SYSTEM}.{f'  ROLE={ROLE}.' if ROLE_SET else ''}\nThe shared files (results.jsonl, LOGBOOK.md, JOURNAL.md, claims.jsonl) live in {WORKSPACE_DIR} \u2014 always read and write them by full path there (e.g. {WORKSPACE_DIR}/results.jsonl). Follow the role rules in the Collaboration section of the prompt."
     server = create_server()
 
@@ -625,22 +922,28 @@ async def main():
         mcp_servers={"cas": server},
         # The task plug-in decides which job tools exist (a task with no local
         # comparator does not get the local pair), so take the list from tools.
-        allowed_tools=tools.tool_names() + [
-            "Read",
-            "Write",
-            "Glob",
-            "Grep",
-            "Bash",
-        ],
+        # `tools`, not `allowed_tools`: this is the list the agent is given.
+        # allowed_tools only says which calls proceed without someone being asked,
+        # which decides nothing in a run with nobody there to ask.
+        tools=agent_tools(),
+        **({"model": AGENT_MODEL} if AGENT_MODEL else {}),
+        **({"settings": _gateway_settings_file()} if GATEWAY_URL else {}),
+        agents=subagent_defs(),
         permission_mode="bypassPermissions",
         system_prompt=system_prompt,
         cwd=SCRIPT_DIR,
+        # Carry on from a conversation someone already had -- working out what to try
+        # with an agent, then handing that reasoning to the run rather than restating
+        # it in a prompt. Forked, so the original transcript is left as it was.
+        **({"resume": RESUME_SESSION, "fork_session": True} if RESUME_SESSION else {}),
     )
 
     results_file = os.path.join(WORKSPACE_DIR, "results.jsonl")
     loop = asyncio.get_event_loop()
 
-    print("Starting CAS search agent...", flush=True)
+    if RESUME_SESSION:
+        print(f"Resuming from session {RESUME_SESSION} (forked)", flush=True)
+    print("Starting agent...", flush=True)
     print(f"Results: {results_file}", flush=True)
     print("=" * 60, flush=True)
 
@@ -675,12 +978,15 @@ async def main():
 
     try:
         async with ClaudeSDKClient(options=options) as client:
-            usage = await _context_usage(client) or {}
-            model = usage.get("model") or "?"
-            if usage.get("totalTokens") is not None:
-                _write_meta(context_tokens=usage.get("totalTokens"),
-                            context_window=usage.get("rawMaxTokens"),
-                            context_pct=usage.get("percentage"))
+            # Before any turn has run: what the prompt, the tools and the memory
+            # files already cost, which is where every run starts from.
+            start = _as_context(await _context_usage(client))
+            model = (start or {}).get("model") or AGENT_MODEL or "?"
+            if start:
+                _last_context.update(start)
+                _write_meta(context_tokens=start["tokens"],
+                            context_window=start["window"],
+                            context_pct=start["pct"])
             print(f"Agent started -- {SYSTEM}{ROLE_NOTE} · model {model}", flush=True)
             _write_meta(model=model)
             if NOTIFY_START:
@@ -729,6 +1035,14 @@ async def main():
                           "what is in flight.", flush=True)
                     # Replace, not prepend: whatever was queued (CONTINUE/EXPLORE) tells
                     # the agent to submit the next region, which contradicts winding down.
+                    prompt = WINDDOWN_PROMPT
+                # The agent says the campaign's goal is met. Same wind-down: no new
+                # work, drain what is in flight, write it up.
+                if stopping is None and tools.goal_is_met():
+                    stopping = "goal met"
+                    tools.request_stop()
+                    _write_meta(goal_met=tools.goal_is_met())
+                    print(f"Goal met -- winding down: {tools.goal_is_met()}", flush=True)
                     prompt = WINDDOWN_PROMPT
                 # A cycle write-up is the trigger: the journal gains a section, so a
                 # longer journal than last round means there is something to review.
@@ -781,13 +1095,6 @@ async def main():
                     last_records = _record_texts()
                     tools.cycle_done_pending()
                     answering_critic = False
-                # A long run fills its context, and how full it is decides whether it
-                # can keep going. Recorded each turn so a watcher can show it.
-                u = await _context_usage(client) or {}
-                if u.get("totalTokens") is not None:
-                    _write_meta(context_tokens=u.get("totalTokens"),
-                                context_window=u.get("rawMaxTokens"),
-                                context_pct=u.get("percentage"))
                 new_submits = tools.submit_count() - submits_before
                 print(f"[round {round_num}] new_submits={new_submits} "
                       f"in_flight={tools.jobs_in_flight()} pending={tools.pending_count()}",
@@ -896,12 +1203,19 @@ async def main():
                     await _post_scheduled_status(client, round_num, start_time)
                     prompt = (REPORT_PROMPT + " Nothing new has completed; just post the "
                               "summary and take no other action.")
+                elif stopping is not None:
+                    # CONTINUE asks for the next region, which is the one thing a run
+                    # that is winding down must not do.
+                    prompt = WINDDOWN_PROMPT
                 else:
                     prompt = CONTINUE_PROMPT
     except asyncio.CancelledError:
         print("Cancelled -- running graceful shutdown.", flush=True)
     finally:
         beat_task.cancel()
+        # Its answer is of no use once the run has ended.
+        if _context_task is not None and not _context_task.done():
+            _context_task.cancel()
         # Record the outcome and clear the liveness marks FIRST. Shutting an executor
         # down can block (a local job runs for as long as it runs), and if that
         # happens the run must still end up correctly recorded rather than frozen as
@@ -927,6 +1241,10 @@ async def main():
 
 
 if __name__ == "__main__":
+    if CHECK_ONLY:
+        preflight()
+        print("preflight only (--preflight): the run was not started.", flush=True)
+        sys.exit(0)
     os.makedirs(LOG_DIR, exist_ok=True)
     with open(LOG_PATH, "w") as log_file:
         sys.stdout = Tee(log_file, sys.__stdout__)

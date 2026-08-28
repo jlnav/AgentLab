@@ -36,6 +36,9 @@ Env:
     SLACK_FETCH_POLL       seconds between checks (default 5)
     SECRETARY_ALIVE_WITHIN heartbeat age that still counts as up (default 60)
     SLACK_READ_ALL         1/true to forward every message, not only mentions
+    SLACK_INBOX            where to deliver, when this bridge serves a reader of its
+                           own rather than the secretary
+    SLACK_READER_HEARTBEAT that reader's liveness file
 """
 
 import json
@@ -51,9 +54,12 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 # each campaign has its own ANNOUNCEMENTS.md that its agent reads between rounds.
 WORKSPACE_ROOT = os.path.abspath(os.environ.get(
     "WORKSPACE_ROOT", os.path.join(SCRIPT_DIR, "..", "workspace")))
-STATE = os.path.join(WORKSPACE_ROOT, "run", "slack_last_ts")
-INBOX = os.path.join(WORKSPACE_ROOT, "run", "slack_inbox.md")
-HEARTBEAT = os.path.join(WORKSPACE_ROOT, "run", "secretary_heartbeat")
+STATE = (os.environ.get("SLACK_STATE")
+         or os.path.join(WORKSPACE_ROOT, "run", "slack_last_ts"))
+INBOX = os.environ.get("SLACK_INBOX") or os.path.join(WORKSPACE_ROOT, "run",
+                                                     "slack_inbox.md")
+HEARTBEAT = os.environ.get("SLACK_READER_HEARTBEAT") or os.path.join(
+    WORKSPACE_ROOT, "run", "secretary_heartbeat")
 # s; a secretary heartbeat fresher than this means it is up and owns Slack questions.
 # It rewrites the file every poll (default 5s), so this tolerates many missed beats.
 SECRETARY_ALIVE_WITHIN = int(os.environ.get("SECRETARY_ALIVE_WITHIN", "60"))
@@ -87,6 +93,17 @@ def write_state(ts):
         f.write(ts)
 
 
+# A bridge told where to deliver serves one reader and nothing else: its messages are
+# that reader's conversation, and a campaign board is not a place to put them.
+DEDICATED = bool(os.environ.get("SLACK_INBOX"))
+
+# Who may instruct the reader: Slack user ids, space separated. Empty means anyone in
+# the channel, which is right when the channel is only the people who may drive it.
+# Enforced here and not in the reader's prompt -- a rule the reader is merely told
+# about is one a message can argue its way past.
+ALLOW = set(os.environ.get("SLACK_ALLOW", "").split())
+
+
 def secretary_up():
     """Whether the secretary is alive and should get the questions. Its heartbeat goes
     stale if the process dies OR wedges mid-answer; either way we fall back to the
@@ -105,12 +122,15 @@ def forward(messages, me):
     """Deliver agent-directed Slack messages, oldest first: to the secretary if it is
     up, to every campaign board if it is not."""
     lines = []
-    read_all = READ_ALL and secretary_up()
+    read_all = READ_ALL and (DEDICATED or secretary_up())
     for m in reversed(messages):          # Slack returns newest first
         if m.get("bot_id") or m.get("subtype"):
             continue                      # never echo bot posts back at the agents
         text = m.get("text", "").strip()
         if not text:
+            continue
+        if ALLOW and m.get("user") not in ALLOW:
+            print(f"ignored, not on SLACK_ALLOW: <@{m.get('user')}>: {text}", flush=True)
             continue
         addressed = f"<@{me}>" in text or BOT_NAME in text
         if not addressed and not read_all:
@@ -119,18 +139,21 @@ def forward(messages, me):
         # The author's Slack id travels with the message: it is what records who asked
         # for a run, and Slack renders it as their name when it is quoted back.
         who = f"<@{m['user']}>" if m.get("user") else "someone"
-        if addressed:
-            lines.append(f"[from Slack -- reply with the notify tool] {who}: {text}")
-        else:
-            lines.append(f"[from Slack -- overheard, not addressed to you] {who}: {text}")
+        tag = ("reply with the notify tool" if addressed
+               else "overheard, not addressed to you")
+        # One reader, one channel: it is talking to whoever is there, so the author's
+        # id is noise. The shared bridge needs it to say who asked for what.
+        lines.append(f"[from Slack -- {tag}] "
+                     + (text if DEDICATED else f"{who}: {text}"))
     if not lines:
         return 0
-    if secretary_up():
+    if DEDICATED or secretary_up():
         os.makedirs(os.path.dirname(INBOX), exist_ok=True)
         with open(INBOX, "a") as f:
             f.write("\n".join(lines) + "\n")
+        where = "reader" if DEDICATED else "secretary"
         for line in lines:
-            print("forwarded to secretary:", line, flush=True)
+            print(f"forwarded to {where}:", line, flush=True)
         return len(lines)
     campaigns = sorted(d for d in glob.glob(os.path.join(WORKSPACE_ROOT, "*"))
                        if os.path.isdir(d) and os.path.basename(d) != "run")

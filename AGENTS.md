@@ -153,14 +153,27 @@ Write `users/<their-username>/<system>.json`: endpoint UUID, account to charge, 
 writable directory on the compute system. Create that directory. This file is not
 tracked by git.
 
-### 8. One job
+### 8. Read the campaign back
+
+Offer to run `bin/review_campaign.sh <campaign>`. It reads the campaign's files
+and reports what would waste a machine or a budget -- setup paid once per job that
+could be paid once per batch, concurrency that serialises cheap work, a timeout longer
+than the allocation, a prompt that enumerates the search, results that will not support
+the conclusions. It takes a minute and answers "nothing worth flagging" when there is
+nothing.
+
+It writes what it found to `campaigns/<name>/EFFICIENCY-REVIEW.md` as well as printing
+it. This is the last point at which changing `task.py` is free: say what it found in a
+line, and fix what they agree with before the first job.
+
+### 9. One job
 
 Ask before submitting anything — a single job can hold a node for a long time. With
 their agreement, run one. Preflight checks the task contract, endpoint status and
 workspace writability, so most misconfigurations fail with a message before anything is
 submitted.
 
-### 9. Slack (optional)
+### 10. Slack (optional)
 
 The campaign posts status, milestones and alerts as it goes, and they can message it
 back to steer it mid-run.
@@ -173,7 +186,7 @@ so they do not need it arranged beforehand. The `Slack` section below has both, 
 
 It can also be added later, if they would rather set it up another time.
 
-### 10. Hand over
+### 11. Hand over
 
 The campaign is theirs to start. Show them the command, and that it goes in tmux:
 
@@ -182,8 +195,11 @@ tmux new -s agentlab
 cd campaigns/<name> && ./run.sh
 ```
 
+`./run.sh --preflight` runs the checks, prints the tools and the model, and stops.
+Worth doing before a long run.
+
 Tell them what the stopping conditions are set to, and how to watch and stop it —
-`framework/list_agents.sh --all` and `framework/kill_agent.sh --drain <run_id>`.
+`bin/list_agents.sh --all` and `bin/kill_agent.sh --drain <run_id>`.
 
 ## Steps that need them at the keyboard
 
@@ -236,20 +252,25 @@ wait, carry on:
    approve it. They request that through the app setup process.
 2. Add an incoming webhook. Its URL goes in `~/.slack_webhook` and is what members
    receive when they join.
-3. Create a bot token with `channels:history`, in `~/.slack_bot_token`. Inbound only —
-   members never need it.
-4. Record the lab's settings, which is the channel ID and the bot name as people
-   mention it:
+3. Create a bot token in `~/.slack_bot_token`, scoped to the kind of channel the lab
+   runs in: `channels:history` for a public one, `groups:history` for a private one.
+   A private channel also needs the bot invited to it. Inbound only — members never
+   need it.
+4. Record what this lab runs and the channel it runs in:
 
    ```
+   cp lab.yaml.template lab.yaml
    cp notifiers/slack.env.template notifiers/slack.env
    ```
 
-   That copy is not tracked by git. `docs/settings.md` lists every setting it can hold.
+   Neither copy is tracked by git. `lab.yaml` is the short one — which processes to
+   start, the channel ID, which campaigns may be driven from Slack — and it is what
+   someone reads to see what the lab does. The Slack file holds the bot name and the
+   paths to the two credentials. `docs/settings.md` lists everything both can hold.
 
-   Ask which campaigns, if any, may be started and stopped from Slack, and name them in
-   `SLACK_CAMPAIGNS`. A campaign not named there can be neither started nor stopped
-   however the request is phrased.
+   Ask which campaigns, if any, may be started and stopped from Slack, and name them on
+   the `startable-campaigns` line. A campaign not named there can be neither started
+   nor stopped however the request is phrased.
 
    Ask which way they want to reach the agents. By default a message has to mention the
    bot. With `SLACK_READ_ALL=true` the secretary is given every message in the channel
@@ -257,21 +278,19 @@ wait, carry on:
    secretary turn per message, and the mention rule comes back whenever the secretary
    is not running.
 
-5. Run the bridge, which delivers channel messages to the secretary, or to the
-   campaign boards when the secretary is not running:
+5. Start what they switched on:
 
    ```
-   framework/run_slack_bridge.sh
+   bin/lab.sh start
    ```
 
-6. Run the secretary, which answers questions from the recorded results so campaigns
-   are not interrupted to reply, and starts and stops runs on request:
+   The bridge delivers channel messages to the secretary, or to the campaign boards
+   when the secretary is not running. The secretary answers questions from the recorded
+   results so campaigns are not interrupted to reply, and starts and stops runs on
+   request. `bin/lab.sh status` says what is up and where each one logs; `stop` ends
+   them.
 
-   ```
-   framework/run_secretary.sh
-   ```
-
-Both are long-running and belong to the lab, not to a campaign or a user. One of each
+These are long-running and belong to the lab, not to a campaign or a user. One of each
 serves everyone.
 
 ## Running and controlling
@@ -286,9 +305,9 @@ cd campaigns/<name> && ./run.sh
 ```
 
 ```
-framework/list_agents.sh --all          every run and its outcome
-framework/list_agents.sh -n 5           the last five runs
-framework/kill_agent.sh --drain <run>   stop cleanly, finishing jobs in flight
+bin/list_agents.sh --all          every run and its outcome
+bin/list_agents.sh -n 5           the last five runs
+bin/kill_agent.sh --drain <run>   stop cleanly, finishing jobs in flight
 ```
 
 A running agent has a short handle — `local1` — which is what it posts under in Slack

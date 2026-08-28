@@ -45,7 +45,14 @@ to 0.140.6. Drop the cap once a LiteLLM release no longer needs it; keep it insi
 range rather than pinning further back, since below 0.136.3 is outside what LiteLLM
 supports.
 
-Write a config naming the upstream model, its endpoint, and the key to reach it:
+Write the config that names the upstream model, its endpoint, and the key to reach it.
+It belongs at the top of the lab, where anyone can see which models are on offer:
+
+```
+cp litellm/config.yaml.template litellm/config.yaml
+```
+
+That copy is not tracked by git, since the keys are in it.
 
 ```yaml
 model_list:
@@ -57,16 +64,23 @@ model_list:
 
 litellm_settings:
   use_chat_completions_url_for_anthropic_messages: true
+  drop_params: true
 ```
 
 `use_chat_completions_url_for_anthropic_messages` is required for an OpenAI-style
 upstream. Without it LiteLLM translates `/v1/messages` to the OpenAI Responses API,
 and a backend that implements only `/v1/chat/completions` answers 404.
 
-Start the proxy:
+`drop_params` is required for the same reason from the other direction. The agent sends
+parameters an OpenAI backend has no equivalent for -- `context_management` among them --
+and LiteLLM refuses the request rather than dropping them, so the first round fails with
+`UnsupportedParamsError` on a proxy that otherwise works.
+
+Start the proxy. `bin/lab.sh start` does it from the `litellm` lines in `lab.yaml`, and
+by hand it is:
 
 ```
-~/venvs/litellm/bin/litellm --config config.yaml --port 4000
+~/venvs/litellm/bin/litellm --config litellm/config.yaml --port 4000
 ```
 
 Check it before pointing the agent at it:
@@ -108,6 +122,7 @@ model_list:
 
 litellm_settings:
   use_chat_completions_url_for_anthropic_messages: true
+  drop_params: true
 ```
 
 Where a gateway serves several vendors' models on one OpenAI-compatible endpoint, every

@@ -21,11 +21,23 @@ secretary, so nobody stands up new infrastructure per question.
 ## Structure
 
 ```
+lab.yaml       what this lab runs, and where its own things are. Copied from
+               lab.yaml.template. Not tracked by git.
+
+bin/           the commands people type. bin/lab.sh start | stop | status runs
+               the lab's long-lived processes.
+
+litellm/       config.yaml — non-Anthropic models this lab can reach, through
+               a LiteLLM proxy. Not tracked by git.
+
 framework/     the agent loop and the tools it calls. Not edited per campaign.
 
-methods/       how the agent works, and what it records. One is copied into a
-               campaign at setup: standard.md, or research.md for hypothesis
-               cycles with a written-up journal.
+methods/       how the agent goes about the work, and what it records. One is
+               copied into a campaign at setup: quick.md, standard.md, or
+               research.md for hypothesis cycles with a written-up journal.
+               How a run works whatever the method — the tools, the records the
+               runner reads, how a run ends — is framework/framework_prompt.md,
+               which every run is given alongside its method.
 
 systems/       one file per machine: module line, proxy, cache paths, queue
                defaults — whatever is true for everyone there.
@@ -76,8 +88,9 @@ Start it inside tmux. A campaign runs for hours or days, and closing the termina
 it with jobs in flight.
 
 ```
-framework/list_agents.sh --all          every run and its outcome
-framework/kill_agent.sh --drain <run>   stop cleanly, finishing jobs in flight
+bin/list_agents.sh --all          every run and its outcome
+bin/kill_agent.sh --drain <run>   stop cleanly, finishing jobs in flight
+bin/lab.sh status                 the lab's own processes, and their logs
 ```
 
 ## Writing a campaign
@@ -90,7 +103,7 @@ Copy `campaigns/example-vllm-inference-opt/` and replace four files:
 | `user_prompt.md` | what to do first |
 | `task.py` | how one job runs, what it returns, and what the agent is told about it |
 | `campaign.json` | which system, and any parameters for it |
-| `method.md` | how the agent works — copied from `methods/` at setup |
+| `method.md` | how the agent goes about the work — copied from `methods/` at setup |
 
 `task.py` defines the job. For work that runs on the system: `JOB_DESC`, `JOB_SCHEMA`,
 `job_key`, `remote_fn` — `remote_fn` is sent to the worker by source, so everything it

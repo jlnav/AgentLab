@@ -6,4 +6,4 @@
 # Usage: ./watch.sh <campaign> [--port N] [--no-open]
 set -euo pipefail
 cd "$(dirname "$0")"
-exec python3 watch.py "$@"
+exec python3 ../framework/watch.py "$@"

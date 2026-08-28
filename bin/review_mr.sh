@@ -10,19 +10,19 @@
 #
 # Env:
 #   REVIEW_BASE_URL   proxy speaking the Messages API   (default http://0.0.0.0:4000)
-#   REVIEW_MODEL      model name the proxy serves       (default gpt-argo)
+#   REVIEW_MODEL      model name the proxy serves       (default gpt-sol)
 #   REVIEW_API_KEY    credential passed upstream        (default $USER)
 #   REVIEW_POST       false to print the review instead of posting it
 #
 # The note names the model that wrote it. The proxy knows which model an alias resolves
-# to, so ask it rather than making the reader look up what "gpt-argo" was that week.
+# to, so ask it rather than making the reader look up what the alias was that week.
 set -euo pipefail
 
 REPO_DIR="${1:?usage: $0 <repo-dir> <mr-number> [evidence-file ...]}"
 MR="${2:?usage: $0 <repo-dir> <mr-number> [evidence-file ...]}"
 shift 2
 BASE_URL="${REVIEW_BASE_URL:-http://0.0.0.0:4000}"
-MODEL="${REVIEW_MODEL:-gpt-argo}"
+MODEL="${REVIEW_MODEL:-gpt-sol}"
 API_KEY="${REVIEW_API_KEY:-$USER}"
 
 # Evidence paths are the caller's, so resolve them before moving into the repo.

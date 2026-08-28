@@ -447,8 +447,13 @@ async def submit_job(args):
     _jobs[job_id] = {"future": fut, "args": args, "key": key, "bucket": bucket}
     _append_jobs_log({"event": "submit", "job_id": job_id, "key": key, "args": args,
                       "bucket": bucket, "task_id": getattr(fut, "task_id", None)})
+    # The budget left, with the job that was just accepted counted. It changes as the
+    # run goes, so it belongs in what a submit answers rather than in a prompt written
+    # once at the start -- and it counts this run's submits, not the rows in a record
+    # that outlives the run.
     return {"content": [{"type": "text", "text": json.dumps(
-        {"job_id": job_id, "key": key, "bucket": bucket})}]}
+        {"job_id": job_id, "key": key, "bucket": bucket,
+         "submits_used": _submit_count, "submits_allowed": MAX_SUBMITS})}]}
 
 
 GET_COMPLETED_DESC = (
@@ -509,7 +514,12 @@ async def submit_local(args):
     _local_submit_count += 1
     _local_jobs[job_id] = {"future": fut, "args": args}
     _append_jobs_log({"event": "local_submit", "job_id": job_id, "args": args})
-    return {"content": [{"type": "text", "text": json.dumps({"job_id": job_id, "args": args})}]}
+    # As for submit_job. Where the task has remote work too, MAX_SUBMITS caps that and
+    # local jobs are uncapped, so there is a count to report and no allowance.
+    out = {"job_id": job_id, "args": args, "local_submits_used": _local_submit_count}
+    if not HAS_REMOTE:
+        out["submits_allowed"] = MAX_SUBMITS
+    return {"content": [{"type": "text", "text": json.dumps(out)}]}
 
 
 GET_LOCAL_DESC = (
@@ -600,6 +610,32 @@ async def cycle_done(args):
                          "cycle recorded; its write-up will be reviewed"}]}
 
 
+GOAL_MET_DESC = (
+    "Call this when the campaign's goal, as its own prompt states it, is met: the "
+    "question is answered to the standard that prompt sets. A good result is not a met "
+    "goal, and neither is a result you have not yet recorded -- write the evidence "
+    "first, then call this. Pass what settles it, in one or two lines. The run stops "
+    "taking new work, finishes what is in flight, and gives you a turn to write up."
+)
+
+_goal_met = None        # what the agent said settles the goal, or None
+
+
+def goal_is_met():
+    """What the agent said settles the campaign's goal, or None."""
+    return _goal_met
+
+
+@tool("goal_met", GOAL_MET_DESC, {"reason": str})
+async def goal_met(args):
+    global _goal_met
+    _goal_met = (args.get("reason") or "").strip() or "(no reason given)"
+    request_stop()
+    return {"content": [{"type": "text", "text":
+                         "goal recorded; this run is winding down -- collect what is in "
+                         "flight and write the cycle up"}]}
+
+
 CHECK_BACKEND_DESC = (
     "Check backend health when nothing has completed for a long time and you are unsure "
     "whether your jobs are genuinely still queued or the backend is stuck. Returns the "
@@ -647,6 +683,7 @@ def create_server():
         tools += [submit_local, get_local_completed]
     tools.append(notify)
     tools.append(cycle_done)
+    tools.append(goal_met)
     if HAS_REMOTE:
         tools.append(check_backend)
     return create_sdk_mcp_server(name="cas", version="1.0.0", tools=tools)
@@ -661,6 +698,7 @@ def tool_names():
         names += ["submit_local", "get_local_completed"]
     names.append("notify")
     names.append("cycle_done")
+    names.append("goal_met")
     if HAS_REMOTE:
         names.append("check_backend")
     return [f"mcp__cas__{n}" for n in names]
