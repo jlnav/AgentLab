@@ -108,6 +108,14 @@ case to stop the agent if it has not met the users goal such as total tasks or c
 wallclock. `docs/settings.md` has every setting. If their files already indicate these,
 use that and tell them what you set. Otherwise ask, and offer the defaults.
 
+Then ask which model should run the agent. If it is an OpenAI GPT model, LiteLLM or
+another gateway that translates the Claude Agent SDK's Anthropic Messages API is
+required, even when the campaign's jobs run locally. If it is another non-Claude model
+behind LiteLLM, ask whether the proxy is already running or should this lab start it.
+LiteLLM is not needed for a local example when the agent uses Claude, unless they
+specifically want to test that integration. Ask about a critic separately: it is optional
+and does not determine whether the main agent uses LiteLLM.
+
 ### LiteLLM proxy notes
 
 When LiteLLM fronts an OpenAI-compatible backend for the Claude Agent SDK:
