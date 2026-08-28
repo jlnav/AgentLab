@@ -15,4 +15,4 @@ export SLACK_PREFIX="${SLACK_PREFIX:-secretary}"   # slack_notify.sh renders thi
 export SLACK_CAMPAIGNS="${SLACK_CAMPAIGNS:-}"   # campaigns the secretary may start and stop; empty means none
 export SECRETARY_POLL="${SECRETARY_POLL:-5}"       # also how often the heartbeat the bridge reads is rewritten
 echo "[run] secretary -> campaign boards under $WORKSPACE_ROOT"
-python -u ../framework/secretary.py
+pixi run python -u ../framework/secretary.py

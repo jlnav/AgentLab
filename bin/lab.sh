@@ -20,14 +20,22 @@ mkdir -p "$RUN_DIR" "$LOG_DIR"
 
 # How each service starts. A service that needs no starting -- an endpoint someone
 # else runs, a proxy already up -- is skipped by `up`, below.
+start_background() {
+    if command -v setsid >/dev/null 2>&1; then
+        setsid nohup "$@" &
+    else
+        nohup "$@" &
+    fi
+}
+
 start_litellm() {
     [ -n "${CRITIC_GATEWAY_START:-}" ] || { echo "  litellm: no litellm-bin in lab.yaml"; return 1; }
-    setsid nohup $CRITIC_GATEWAY_START >"$LOG_DIR/litellm.log" 2>&1 &
+    start_background sh -c "$CRITIC_GATEWAY_START" >"$LOG_DIR/litellm.log" 2>&1
     echo $! > "$RUN_DIR/litellm.pid"
 }
-start_bridge()    { setsid nohup ./run_slack_bridge.sh >"$LOG_DIR/bridge.log" 2>&1 & echo $! > "$RUN_DIR/bridge.pid"; }
-start_secretary() { setsid nohup ./run_secretary.sh    >"$LOG_DIR/secretary.log" 2>&1 & echo $! > "$RUN_DIR/secretary.pid"; }
-start_engineer()  { setsid nohup ./run_engineer.sh     >"$LOG_DIR/engineer.log" 2>&1 & echo $! > "$RUN_DIR/engineer.pid"; }
+start_bridge()    { start_background ./run_slack_bridge.sh >"$LOG_DIR/bridge.log" 2>&1; echo $! > "$RUN_DIR/bridge.pid"; }
+start_secretary() { start_background ./run_secretary.sh    >"$LOG_DIR/secretary.log" 2>&1; echo $! > "$RUN_DIR/secretary.pid"; }
+start_engineer()  { start_background ./run_engineer.sh     >"$LOG_DIR/engineer.log" 2>&1; echo $! > "$RUN_DIR/engineer.pid"; }
 
 # Whether one is already up. The pid file is this script's own record; the proxy is
 # checked by asking it, since it may have been started by hand or by a run's preflight.
