@@ -252,8 +252,10 @@ wait, carry on:
    approve it. They request that through the app setup process.
 2. Add an incoming webhook. Its URL goes in `~/.slack_webhook` and is what members
    receive when they join.
-3. Create a bot token with `channels:history`, in `~/.slack_bot_token`. Inbound only —
-   members never need it.
+3. Create a bot token in `~/.slack_bot_token`, scoped to the kind of channel the lab
+   runs in: `channels:history` for a public one, `groups:history` for a private one.
+   A private channel also needs the bot invited to it. Inbound only — members never
+   need it.
 4. Record what this lab runs and the channel it runs in:
 
    ```

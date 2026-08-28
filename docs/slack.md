@@ -15,7 +15,9 @@ bound to one workspace and one channel. POST JSON to it and the message appears 
 There is no authentication header — the URL is the credential.
 
 **The bot token**, `xoxb-…`, is presented as `Authorization: Bearer` on calls to Slack's
-Web API. Reading a channel needs the `channels:history` scope.
+Web API. Reading a channel needs the scope for its kind: `channels:history` for a
+public channel, `groups:history` for a private one. A bot reads only channels it is a
+member of, so a private channel has to invite it.
 
 Keep both outside the repository, in `~/.slack_webhook` and `~/.slack_bot_token`.
 

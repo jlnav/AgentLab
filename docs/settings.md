@@ -144,7 +144,7 @@ One of each per lab, not per campaign. Channels and startable campaigns come fro
 |---|---|---|
 | `WORKSPACE_ROOT` | `workspace/` | scanned for campaigns |
 | `SLACK_CHANNEL` | — | channel ID the bridge reads |
-| `SLACK_BOT_TOKEN_FILE` | `~/.slack_bot_token` | bot token, needs `channels:history` |
+| `SLACK_BOT_TOKEN_FILE` | `~/.slack_bot_token` | bot token, needs `channels:history` for a public channel or `groups:history` for a private one |
 | `SLACK_BOT_NAME` | `@cas_agent` | plain-text mention fallback |
 | `SLACK_FETCH_POLL` | 5 | seconds between Slack checks; dominates end-to-end latency |
 | `RESUME_SESSION` | — | a session id, or `last` / `compact` for the engineer's own previous conversation. Set from `engineer-resume` |
