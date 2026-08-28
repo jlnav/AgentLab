@@ -6,8 +6,8 @@ of the curve either side.
 
 Every reading carries noise. Two settings whose means differ by less than the noise are
 not told apart by one reading each — the difference you see is as likely to be the noise
-as the system. `submit_local` takes `replicates`, and the mean of several readings is a
-tighter estimate than one: `noise_sd` comes back with each job so you can see how tight.
+as the system. A job can take several readings at one setting and average them, which
+tightens the estimate, and it reports the spread of those readings alongside the mean.
 
 The run produces two things: where the optimum is, with an interval you can defend, and
 what the shape of the response says about the system.

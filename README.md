@@ -32,9 +32,12 @@ litellm/       config.yaml — non-Anthropic models this lab can reach, through
 
 framework/     the agent loop and the tools it calls. Not edited per campaign.
 
-methods/       how the agent works, and what it records. One is copied into a
-               campaign at setup: standard.md, or research.md for hypothesis
-               cycles with a written-up journal.
+methods/       how the agent goes about the work, and what it records. One is
+               copied into a campaign at setup: quick.md, standard.md, or
+               research.md for hypothesis cycles with a written-up journal.
+               How a run works whatever the method — the tools, the records the
+               runner reads, how a run ends — is framework/framework_prompt.md,
+               which every run is given alongside its method.
 
 systems/       one file per machine: module line, proxy, cache paths, queue
                defaults — whatever is true for everyone there.
@@ -100,7 +103,7 @@ Copy `campaigns/example-vllm-inference-opt/` and replace four files:
 | `user_prompt.md` | what to do first |
 | `task.py` | how one job runs, what it returns, and what the agent is told about it |
 | `campaign.json` | which system, and any parameters for it |
-| `method.md` | how the agent works — copied from `methods/` at setup |
+| `method.md` | how the agent goes about the work — copied from `methods/` at setup |
 
 `task.py` defines the job. For work that runs on the system: `JOB_DESC`, `JOB_SCHEMA`,
 `job_key`, `remote_fn` — `remote_fn` is sent to the worker by source, so everything it

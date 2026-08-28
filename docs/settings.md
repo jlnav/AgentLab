@@ -164,6 +164,7 @@ Time limits that bound a job rather than a launch live here.
 |---|---|
 | `campaigns/<name>/campaign.json` | which system, the model, `target.timeout` — seconds a job's own command may run |
 | `lab.yaml` | what this lab runs and where its own things are, as above |
+| `framework/framework_prompt.md` | how a run works whatever its method: the tools, the records the runner reads, and the two ways a run ends. Given to every run alongside its `method.md` |
 | `litellm/config.yaml` | the non-Anthropic models this lab can reach, and the keys for them. Copy `litellm/config.yaml.template`; `docs/llm.md` explains the settings that matter |
 | `bin/review_campaign.sh <campaign>` | reads a campaign before it runs and reports what would waste a machine or a budget, appending to `campaigns/<name>/EFFICIENCY-REVIEW.md`; `framework/review_campaign_prompt.md` is what it asks |
 | `systems/<system>.json` | module line, proxy, cache paths, `ppn`, `max_concurrent`, and `bucket_defaults` including the batch allocation's `walltime` |

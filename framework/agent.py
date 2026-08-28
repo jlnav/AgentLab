@@ -411,6 +411,14 @@ def load_method():
         return f.read()
 
 
+def load_framework():
+    """How a run works whatever method it follows: the tools, the records the runner
+    reads, and the two ways a run ends. Not copied into a campaign -- a campaign owns
+    its method, but the framework it runs in is the framework's to state."""
+    with open(os.path.join(SCRIPT_DIR, "framework_prompt.md")) as f:
+        return f.read()
+
+
 def load_user_prompt():
     with open(os.path.join(CAMPAIGN_DIR, USER_PROMPT_FILE)) as f:
         return f.read()
@@ -779,6 +787,9 @@ def preflight():
         problems.append(f"WORKSPACE_DIR does not exist: {WORKSPACE_DIR}")
     if not os.path.isfile(method_path()):
         problems.append(f"method.md missing: {method_path()} (how-to-work prompt loaded into the agent)")
+    _fw = os.path.join(SCRIPT_DIR, "framework_prompt.md")
+    if not os.path.isfile(_fw):
+        problems.append(f"framework_prompt.md missing: {_fw}")
     # Fail fast if the Globus Compute endpoint is not online -- otherwise every
     # submit fails with ENDPOINT_NOT_ONLINE and the run does nothing. A task with no
     # remote_fn never reaches the endpoint, so there is nothing to probe.
@@ -891,7 +902,21 @@ async def drain_turn(client, round_num):
 
 async def main():
     system_prompt = load_prompt()
+    system_prompt += "\n\n" + load_framework()
     system_prompt += "\n\n" + load_method()
+    # What runs at once, which the agent cannot discover except by being refused.
+    # Not the job budget: that changes as the run goes, so each submit returns it.
+    at_once = []
+    if tools.HAS_REMOTE:
+        at_once.append(f"jobs running at once: {tools.MAX_CONCURRENT}")
+    if tools.HAS_LOCAL:
+        at_once.append(f"local jobs running at once: {tools.LOCAL_MAX_CONCURRENT}")
+    if MAX_RUNTIME:
+        at_once.append(f"wall clock for this run: {MAX_RUNTIME}s")
+    system_prompt += ("\n\n# This run\n" + "\n".join(at_once)
+                      + "\n\nSubmitting more at once than that queues the rest, which "
+                        "tells you nothing sooner. Each submit answers with how much of "
+                        "the run's job budget it has used.")
     system_prompt += f"\n\n# This agent\nSYSTEM={SYSTEM}.{f'  ROLE={ROLE}.' if ROLE_SET else ''}\nThe shared files (results.jsonl, LOGBOOK.md, JOURNAL.md, claims.jsonl) live in {WORKSPACE_DIR} \u2014 always read and write them by full path there (e.g. {WORKSPACE_DIR}/results.jsonl). Follow the role rules in the Collaboration section of the prompt."
     server = create_server()
 
@@ -920,7 +945,7 @@ async def main():
 
     if RESUME_SESSION:
         print(f"Resuming from session {RESUME_SESSION} (forked)", flush=True)
-    print("Starting CAS search agent...", flush=True)
+    print("Starting agent...", flush=True)
     print(f"Results: {results_file}", flush=True)
     print("=" * 60, flush=True)
 
@@ -1012,6 +1037,14 @@ async def main():
                           "what is in flight.", flush=True)
                     # Replace, not prepend: whatever was queued (CONTINUE/EXPLORE) tells
                     # the agent to submit the next region, which contradicts winding down.
+                    prompt = WINDDOWN_PROMPT
+                # The agent says the campaign's goal is met. Same wind-down: no new
+                # work, drain what is in flight, write it up.
+                if stopping is None and tools.goal_is_met():
+                    stopping = "goal met"
+                    tools.request_stop()
+                    _write_meta(goal_met=tools.goal_is_met())
+                    print(f"Goal met -- winding down: {tools.goal_is_met()}", flush=True)
                     prompt = WINDDOWN_PROMPT
                 # A cycle write-up is the trigger: the journal gains a section, so a
                 # longer journal than last round means there is something to review.
@@ -1172,6 +1205,10 @@ async def main():
                     await _post_scheduled_status(client, round_num, start_time)
                     prompt = (REPORT_PROMPT + " Nothing new has completed; just post the "
                               "summary and take no other action.")
+                elif stopping is not None:
+                    # CONTINUE asks for the next region, which is the one thing a run
+                    # that is winding down must not do.
+                    prompt = WINDDOWN_PROMPT
                 else:
                     prompt = CONTINUE_PROMPT
     except asyncio.CancelledError:
