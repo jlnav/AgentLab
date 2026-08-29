@@ -38,11 +38,11 @@ Show them the command. Offer to run it; otherwise it is theirs to start, and to 
 when it has finished.
 
 ```
-cd campaigns/example-quick-optimum && WATCH=true AGENT_MODEL=sonnet ./run.sh
+cd campaigns/example-quick-optimum && WATCH=true AGENT_MODEL=haiku ./run.sh
 ```
 
 - `WATCH=true` serves the run to a browser at the address it prints.
-- `AGENT_MODEL=sonnet` runs the agent on sonnet. Leave it out for their own setting.
+- `AGENT_MODEL=haiku` runs the agent on haiku. Leave it out for their own setting.
 - `./run.sh --preflight` checks the task contract and the workspace and prints the tools
   and the model, without submitting anything.
 
@@ -64,14 +64,19 @@ they see the posts arrive.
 
 ### 5. Run it again with a critic (optional)
 
-The first run has no critic. One shows a cycle being reviewed, and takes longer.
+A critic is a second model, called every cycle, that checks the write-up against the
+recorded results. Aim for a family other than the agent's own — that is what `auto`
+picks where it can.
 
-```
-CRITIC_MODEL=auto CRITIC_BASE_URL=<their gateway> ./run.sh
-```
+The SDK speaks only the Messages API, so reaching a non-Anthropic model needs something
+that serves it in that format. Which of these they have decides the step:
 
-It needs a model to review with; `docs/llm.md` covers what serves one. Skip this if they
-have nothing to point it at.
+- Their endpoint serves one already — name it, and check with
+  `CRITIC_MODEL=<model> ./run.sh --preflight`.
+- It has non-Anthropic models but does not serve Messages — LiteLLM is what the lab runs
+  in front of it, and `docs/llm.md` is the procedure. Offer to set it up.
+- Neither, or they would rather not now — a Claude model uses the access the agent
+  already has, or skip the step.
 
 ### 6. What next
 
