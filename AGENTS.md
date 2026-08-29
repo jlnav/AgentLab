@@ -34,7 +34,8 @@ python3 -V && claude --version && pip install -r requirements.txt
 
 ### 2. Give them the line
 
-Show them the command. Offer to run it; it is theirs to start.
+Show them the command. Offer to run it; otherwise it is theirs to start, and to say
+when it has finished.
 
 ```
 cd campaigns/example-quick-optimum && WATCH=true AGENT_MODEL=sonnet ./run.sh
@@ -53,7 +54,15 @@ directory with its logs. This is where they will read their own campaign.
 `bin/list_agents.sh --all` lists the run and the Claude session it ran in, which
 `claude -r <session>` reads back.
 
-### 4. Run it again with a critic (optional)
+### 4. Slack (optional)
+
+The lab posts status, milestones and alerts to a Slack channel, and messages back steer
+a run. One app and one secretary serve every campaign, so it is set up once for the lab.
+
+The `Slack` section below is the procedure. With it in place, run the example again so
+they see the posts arrive.
+
+### 5. Run it again with a critic (optional)
 
 The first run has no critic. One shows a cycle being reviewed, and takes longer.
 
@@ -63,13 +72,6 @@ CRITIC_MODEL=auto CRITIC_BASE_URL=<their gateway> ./run.sh
 
 It needs a model to review with; `docs/llm.md` covers what serves one. Skip this if they
 have nothing to point it at.
-
-### 5. Slack (optional)
-
-The lab posts status, milestones and alerts to a Slack channel, and messages back steer
-a run. One app and one secretary serve every campaign, so it is set up once for the lab.
-
-The `Slack` section below is the procedure.
 
 ### 6. What next
 
@@ -242,7 +244,7 @@ Otherwise the `Slack` section below is the procedure. It can be added at any tim
 
 ### 11. Hand over
 
-The campaign is theirs to start. Show them the command, and that it goes in tmux:
+The campaign is theirs to start. Show them the command, in tmux if needed:
 
 ```
 tmux new -s agentlab
@@ -349,9 +351,8 @@ serves everyone.
 
 ## Running and controlling
 
-**Start it inside tmux.** A campaign runs for hours or days, and closing the terminal
-or dropping an ssh session kills the process — with jobs in flight and their results
-uncollected. Confirm they are in a tmux session before launching, or start one.
+**Start it inside tmux if needed.** A campaign runs for hours or days, and losing the
+terminal kills the process with jobs in flight and their results uncollected.
 
 ```
 tmux new -s agentlab
