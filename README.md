@@ -59,11 +59,18 @@ workspace/<name>/
 
 Clone this repository, start your agent in it, and say:
 
-> Help me set up a campaign.
+> Help me set up.
 
-It will ask what you are trying to find out, which machine you will run on, and whether
-you already have files — a script, a prompt, notes. From that it creates
-`campaigns/<your-name>/`, writes the four files a campaign needs, records your access in
+It asks which of two you want.
+
+**Set up the lab and run the example** — the one to take if you are new. It runs on the
+machine you are already on: no account, no endpoint. It checks the install, gives you
+the command for the example campaign, and reads the results back with you. Slack for the
+lab is offered along the way.
+
+**Set up a campaign of your own** — it asks what you are trying to find out, which
+machine you will run on, and what files you already have. From that it creates
+`campaigns/<your-name>/`, writes the files a campaign needs, records your access in
 `users/<you>/`, and walks you through the Globus Compute endpoint.
 
 The agent uses whichever LLM your Claude Code settings point at. `docs/llm.md` covers
@@ -112,7 +119,14 @@ define both, and the agent is given tools for whichever it defines. A task with 
 
 Nothing in `framework/` changes.
 
-## The example campaign
+## The example campaigns
+
+`campaigns/example-quick-optimum/` — one dial, a noisy response, a lowest point to find.
+Runs in minutes on your own machine, with no endpoint and no account. Setup starts here.
+
+`campaigns/example-local-compression/` — real work on the same footing: which zlib
+setting gets a corpus to a consumer fastest, trading encode time against transmit time.
+Also entirely on your own machine.
 
 `campaigns/example-vllm-inference-opt/` tunes single-node vLLM inference for
 Llama-3-70B on Aurora: it measures per-token decode rate and searches for a

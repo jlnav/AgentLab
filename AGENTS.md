@@ -5,6 +5,79 @@ running. The aim is to be concise. Do not quibble over things unless they really
 
 ## Setting someone up
 
+Ask which they want, and say the first is the one for anyone new here:
+
+1. **Set up the lab and run the example.** On the machine they are already on. No
+   account, no endpoint, minutes to run.
+2. **Set up a campaign of their own.**
+
+Each is a sequence below, numbered from 1.
+
+One step per message: a single question or a single action, take the answer, do the
+thing, move on. Start each message with `Step N`. When their files already answer a
+step, say so in a line and go to the next, so they can see nothing was skipped.
+
+Where there is more than one way to do something, choose the one that works and say
+which in a line.
+
+## Setting up the lab and running the example
+
+`campaigns/example-quick-optimum`: one dial, a noisy response, a lowest point to find.
+
+### 1. Check the installation
+
+Python 3.10+, and the `claude` CLI on PATH and authenticated:
+
+```
+python3 -V && claude --version && pip install -r requirements.txt
+```
+
+### 2. Give them the line
+
+Show them the command. Offer to run it; it is theirs to start.
+
+```
+cd campaigns/example-quick-optimum && WATCH=true AGENT_MODEL=sonnet ./run.sh
+```
+
+- `WATCH=true` serves the run to a browser at the address it prints.
+- `AGENT_MODEL=sonnet` runs the agent on sonnet. Leave it out for their own setting.
+- `./run.sh --preflight` checks the task contract and the workspace and prints the tools
+  and the model, without submitting anything.
+
+### 3. Read what it produced
+
+`workspace/example-quick-optimum/` — `results.jsonl`, `LOGBOOK.md`, and the run
+directory with its logs. This is where they will read their own campaign.
+
+`bin/list_agents.sh --all` lists the run and the Claude session it ran in, which
+`claude -r <session>` reads back.
+
+### 4. Run it again with a critic (optional)
+
+The first run has no critic. One shows a cycle being reviewed, and takes longer.
+
+```
+CRITIC_MODEL=auto CRITIC_BASE_URL=<their gateway> ./run.sh
+```
+
+It needs a model to review with; `docs/llm.md` covers what serves one. Skip this if they
+have nothing to point it at.
+
+### 5. Slack (optional)
+
+The lab posts status, milestones and alerts to a Slack channel, and messages back steer
+a run. One app and one secretary serve every campaign, so it is set up once for the lab.
+
+The `Slack` section below is the procedure.
+
+### 6. What next
+
+Their own campaign is the sequence below. `campaigns/example-local-compression/` is a
+second local run, on real work.
+
+## Setting up their own campaign
+
 Open with what they will need:
 
 - A prompt — what they want the agent to do.
@@ -12,21 +85,7 @@ Open with what they will need:
 - The Claude Agent SDK, and access to an LLM service it can use.
 - Any files they already have — a script, notes, previous results.
 
-Someone with none of that, who wants to see what this does before bringing work to it,
-should be offered `campaigns/example-quick-optimum` instead: it runs on their own
-machine, needs no account and no endpoint, and finishes in minutes. Copy it to a
-campaign of their own and run it. That first run has no critic, so they see a campaign
-work end to end quickly; running it again with one shows a cycle being reviewed, and
-takes longer because the reviewing model reads the results before it answers.
-
 Then step 1, in the same message.
-
-One step per message after that: a single question or a single action, take the answer,
-do the thing, move on. Start each message with `Step N`. When their files already
-answer a step, say so in a line and go to the next, so they can see nothing was skipped.
-
-Where there is more than one way to do something, choose the one that works and say
-which in a line.
 
 ### 1. Ask for a name
 
@@ -94,7 +153,7 @@ and `target`; `local_fn` takes `args` alone and is called in-process. Expose mor
 parameters than seem needed — a campaign can only explore what its schema allows.
 
 A task with `local_fn` and no `remote_fn` needs no endpoint, no account and no
-`users/<you>/<system>.json`, so steps 6 and 7 below do not apply to it.
+`users/<you>/<system>.json`, so the endpoint and access steps below do not apply to it.
 
 If they gave you results from earlier work, ask whether those measure the same quantity,
 the same way, as a job here. If they do, seed the workspace with them —
@@ -176,15 +235,10 @@ submitted.
 ### 10. Slack (optional)
 
 The campaign posts status, milestones and alerts as it goes, and they can message it
-back to steer it mid-run.
+back to steer it mid-run. Where the lab already has Slack, there is nothing to set up;
+`run.sh` holds which posts this campaign makes.
 
-Ask whether they are joining an existing lab or setting one up — joining needs only the
-channel and its webhook URL. Setting one up means creating a Slack app, which in most
-workspaces a Slack admin has to approve; requesting that approval is part of the setup,
-so they do not need it arranged beforehand. The `Slack` section below has both, and
-`docs/slack.md` explains how the pieces fit together.
-
-It can also be added later, if they would rather set it up another time.
+Otherwise the `Slack` section below is the procedure. It can be added at any time.
 
 ### 11. Hand over
 
