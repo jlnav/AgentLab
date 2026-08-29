@@ -783,8 +783,6 @@ def preflight():
         claude_tools()
     except ValueError as e:
         problems.append(str(e))
-    if not os.path.isdir(WORKSPACE_DIR):
-        problems.append(f"WORKSPACE_DIR does not exist: {WORKSPACE_DIR}")
     if not os.path.isfile(method_path()):
         problems.append(f"method.md missing: {method_path()} (how-to-work prompt loaded into the agent)")
     _fw = os.path.join(SCRIPT_DIR, "framework_prompt.md")

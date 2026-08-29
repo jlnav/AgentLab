@@ -697,6 +697,7 @@ def tool_names():
     if HAS_LOCAL:
         names += ["submit_local", "get_local_completed"]
     names.append("notify")
+    names.append("cycle_done")
     names.append("goal_met")
     if HAS_REMOTE:
         names.append("check_backend")
