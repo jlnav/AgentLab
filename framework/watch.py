@@ -36,7 +36,7 @@ READABLE = ("LOGBOOK.md", "JOURNAL.md", "REVIEWS.md", "results.jsonl",
             "ANNOUNCEMENTS.md", "jobs.jsonl")
 TAIL_BYTES = 400_000        # of a file view; the log is followed from an offset instead
 
-try:                        # optional: without it, records are served as plain text
+try:                        # in requirements.txt; without it records are plain text
     import markdown as _markdown
 except Exception:
     _markdown = None

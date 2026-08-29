@@ -4,5 +4,5 @@ globus-compute-sdk
 # matplotlib
 # mpi4py
 
-# Optional: rendered records in the run viewer (framework/watch.sh).
+# Rendered records in the run viewer (bin/watch.sh, and WATCH=true during a run).
 markdown
