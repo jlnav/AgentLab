@@ -43,7 +43,7 @@ cd campaigns/example-quick-optimum && WATCH=true AGENT_MODEL=haiku ./run.sh
 
 - `WATCH=true` serves the run to a browser at the address it prints.
 - `AGENT_MODEL=haiku` runs the agent on haiku. Leave it out for their own setting.
-- `./run.sh --preflight` checks the task contract and the workspace and prints the tools
+- `PREFLIGHT=true ./run.sh` checks the task contract and the workspace and prints the tools
   and the model, without submitting anything.
 
 ### 3. Read what it produced
@@ -72,7 +72,7 @@ The SDK speaks only the Messages API, so reaching a non-Anthropic model needs so
 that serves it in that format. Which of these they have decides the step:
 
 - Their endpoint serves one already — name it, and check with
-  `CRITIC_MODEL=<model> ./run.sh --preflight`.
+  `CRITIC_MODEL=<model> PREFLIGHT=true ./run.sh`.
 - It has non-Anthropic models but does not serve Messages — LiteLLM is what the lab runs
   in front of it, and `docs/llm.md` is the procedure. Offer to set it up.
 - Neither, or they would rather not now — a Claude model uses the access the agent
@@ -256,7 +256,7 @@ tmux new -s agentlab
 cd campaigns/<name> && ./run.sh
 ```
 
-`./run.sh --preflight` runs the checks, prints the tools and the model, and stops.
+`PREFLIGHT=true ./run.sh` runs the checks, prints the tools and the model, and stops.
 Worth doing before a long run.
 
 Tell them what the stopping conditions are set to, and how to watch and stop it —

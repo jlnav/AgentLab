@@ -687,10 +687,13 @@ def _stop_file_present():
     return os.path.exists(os.path.join(RUN_DIR, "stop"))
 
 
-# `--preflight` runs the checks and stops, for someone deciding whether a campaign is
+# PREFLIGHT runs the checks and stops, for someone deciding whether a campaign is
 # ready before giving a machine to it for days. It leaves no trace of a run: the log is
 # not opened, so the last run's log survives, and no watcher or Slack post is made.
-CHECK_ONLY = "--preflight" in sys.argv
+# The environment variable is the form campaigns use, since it reaches here whatever a
+# run.sh looks like; --preflight is accepted too, for running this file directly.
+CHECK_ONLY = (os.environ.get("PREFLIGHT", "").lower() in ("1", "true", "yes")
+              or "--preflight" in sys.argv)
 
 
 GATEWAY_URL = None          # set when this run is routed through the lab's gateway
@@ -1243,7 +1246,7 @@ async def main():
 if __name__ == "__main__":
     if CHECK_ONLY:
         preflight()
-        print("preflight only (--preflight): the run was not started.", flush=True)
+        print("preflight only: the run was not started.", flush=True)
         sys.exit(0)
     os.makedirs(LOG_DIR, exist_ok=True)
     with open(LOG_PATH, "w") as log_file:

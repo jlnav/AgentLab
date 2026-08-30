@@ -59,6 +59,7 @@ collects what is in flight, writes up, and exits.
 
 | | default | |
 |---|---|---|
+| `PREFLIGHT` | unset | run the checks, print the tools and the model, and stop without starting the run |
 | `RESUME_SESSION` | — | a Claude session id to start from, so a run continues a conversation you had with an agent. Forked, so that transcript is untouched; its whole context comes with it |
 | `MAX_SUBMITS` | 60 | jobs submitted before winding down |
 | `MAX_RUNTIME` | unset | seconds from start before winding down; unset means no limit |
@@ -118,7 +119,7 @@ refuses it. Add it where the lab's gateway does.
 | `AGENT_TOOLS` | — | change that set: `+WebSearch -Write` adjusts it, a plain list (`Read Grep Bash`) replaces it. One form or the other, not both. The job tools are always given — they come from what the task defines. |
 | `AGENT_MODEL` | — | which model the agent runs as. Unset leaves it to Claude Code. An alias (`sonnet`, `opus`) or a full model name. |
 
-`./run.sh --preflight` runs the checks, prints the tools and the model, and stops.
+`PREFLIGHT=true ./run.sh` runs the checks, prints the tools and the model, and stops.
 
 Less often changed.
 
