@@ -67,9 +67,18 @@ mkdir -p "$(dirname "$LAST")" && echo "$now" > "$LAST"
 # same environment as running ./run.sh at a terminal. Whoever calls this has an
 # environment of their own -- the secretary carries its Slack identity in one -- and
 # none of it should reach the run.
-setsid nohup env -i HOME="$HOME" USER="$USER" LOGNAME="${LOGNAME:-$USER}" TERM=dumb \
-    bash -lc "cd '$LAB_DIR/campaigns/$CAMPAIGN' && exec ./run.sh" \
-    >/dev/null 2>&1 &
+if command -v setsid >/dev/null 2>&1; then
+  setsid nohup env -i HOME="$HOME" USER="$USER" LOGNAME="${LOGNAME:-$USER}" TERM=dumb \
+      bash -lc "cd '$LAB_DIR/campaigns/$CAMPAIGN' && exec ./run.sh" \
+      >/dev/null 2>&1 &
+else
+  # macOS has no setsid command. Fork first because the Python process may already
+  # be a process-group leader, then create the isolated group in the child.
+  python3 -c 'import os, sys; pid = os.fork(); os._exit(0) if pid else (os.setsid(), os.execvp(sys.argv[1], sys.argv[1:]))' \
+      nohup env -i HOME="$HOME" USER="$USER" LOGNAME="${LOGNAME:-$USER}" TERM=dumb \
+      bash -lc "cd '$LAB_DIR/campaigns/$CAMPAIGN' && exec ./run.sh" \
+      >/dev/null 2>&1 &
+fi
 echo "start_run: $CAMPAIGN starting -- $REASON"
 
 # The handle is what a person says to address this agent, so wait for the agent to
