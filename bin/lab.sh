@@ -24,7 +24,9 @@ start_background() {
     if command -v setsid >/dev/null 2>&1; then
         setsid nohup "$@" &
     else
-        nohup "$@" &
+        # macOS has no setsid command; os.setpgrp() preserves group shutdown.
+        python3 -c 'import os, sys; os.setpgrp(); os.execvp(sys.argv[1], sys.argv[1:])' \
+            nohup "$@" &
     fi
 }
 
@@ -85,7 +87,7 @@ stop)
         pid="$(cat "$RUN_DIR/$s.pid" 2>/dev/null)" || { echo "  $s: not started from here"; continue; }
         if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
             # The launchers run their work in children, so stop the group.
-            kill -- "-$pid" 2>/dev/null || kill "$pid" 2>/dev/null
+            kill -TERM "-$pid" 2>/dev/null || kill -TERM "$pid" 2>/dev/null
             echo "  $s: stopped"
         else
             echo "  $s: not running"
