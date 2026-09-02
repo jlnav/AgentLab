@@ -25,17 +25,23 @@ fi
 RUNS_DIR="${WORKSPACE_DIR:-$LAB_DIR/workspace/*}/runs"
 STALE_AFTER=300     # s without a heartbeat before a run is presumed dead
 
-# meta.json is read once per run and cached: one python start per run, not per field.
-declare -A META_CACHE=()
+# meta.json is read once per run and cached in scalar variables. macOS ships Bash 3.2,
+# which has indexed arrays but not the associative arrays used by newer Bash versions.
+META_LOADED_DIR=""
+META_status=""
+META_stop_reason=""
+META_handle=""
+META_host=""
+META_pid=""
+META_user_prompt_file=""
+META_session_id=""
 
 meta_load() {   # run_dir -> cache every field we print, as one call
     local d="$1"
-    [ -n "${META_CACHE[$d|_loaded]:-}" ] && return
-    local line key val
-    while IFS=$'\t' read -r key val; do
-        META_CACHE["$d|$key"]="$val"
-    done < <(python3 -c '
-import json, sys
+    [ "$META_LOADED_DIR" = "$d" ] && return
+    META_LOADED_DIR="$d"
+    eval "$(python3 -c '
+import json, shlex, sys
 fields = ("status", "stop_reason", "handle", "host", "pid",
           "user_prompt_file", "session_id")
 try:
@@ -44,22 +50,22 @@ try:
 except Exception:
     meta = {}
 for k in fields:
-    print(k, str(meta.get(k, "") or "").replace("\t", " "), sep="\t")
-' "$d/meta.json")
-    META_CACHE["$d|_loaded"]=1
+    print("META_%s=%s" % (k, shlex.quote(str(meta.get(k, "") or "").replace("\\t", " "))))
+' "$d/meta.json")"
 }
 
 meta_get() {
     meta_load "$1"
-    printf '%s' "${META_CACHE[$1|$2]:-}"
+    eval "printf '%s' \"\${META_$2:-}\""
 }
+
 
 describe() {   # run_dir -> running / stopped (reason) / presumed dead
     local d="$1" status hb age now
     meta_load "$d"
-    status="${META_CACHE[$d|status]:-}"
+    status="$META_status"
     if [ "$status" = "stopped" ]; then
-        echo "stopped: ${META_CACHE[$d|stop_reason]:-}"
+        echo "stopped: $META_stop_reason"
         return
     fi
     if [ ! -f "$d/heartbeat" ]; then
@@ -79,7 +85,7 @@ describe() {   # run_dir -> running / stopped (reason) / presumed dead
 is_running() {   # a run is running only if it is beating now
     local d="$1" hb age
     meta_load "$d"
-    [ "${META_CACHE[$d|status]:-}" = "stopped" ] && return 1
+    [ "$META_status" = "stopped" ] && return 1
     [ -f "$d/heartbeat" ] || return 1
     hb="$(cat "$d/heartbeat" 2>/dev/null || echo 0)"
     age=$(( $(date +%s) - hb ))
@@ -128,7 +134,7 @@ fi
 # Said once, and only when a finished run in this listing has a session to reopen.
 for d in "${show[@]}"; do
     meta_load "$d"
-    if [ -n "${META_CACHE[$d|session_id]:-}" ] && ! is_running "$d"; then
+    if [ -n "$META_session_id" ] && ! is_running "$d"; then
         echo "Reopen a finished run's conversation with: claude -r <session>"
         echo
         break
@@ -137,14 +143,14 @@ done
 
 for d in "${show[@]}"; do
     meta_load "$d"
-    handle="${META_CACHE[$d|handle]:-}"
+    handle="$META_handle"
     printf '%s%s\n    host=%s pid=%s prompt=%s\n    %s\n' \
         "$(basename "$d")" \
         "${handle:+  [$handle]}" \
-        "${META_CACHE[$d|host]:-}" "${META_CACHE[$d|pid]:-}" \
-        "${META_CACHE[$d|user_prompt_file]:-}" \
+        "$META_host" "$META_pid" \
+        "$META_user_prompt_file" \
         "$(describe "$d")"
-    sid="${META_CACHE[$d|session_id]:-}"
+    sid="$META_session_id"
     # Only for runs that have ended. A live agent is still writing its conversation,
     # and reading it back is not what you want from a listing of what is running.
     if [ -n "$sid" ] && ! is_running "$d"; then
