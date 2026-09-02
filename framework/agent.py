@@ -2,8 +2,8 @@
 """
 CAS: an agent that searches a domain by running work on HPC via Globus Compute.
 
-System prompt: prompt.md (the goal) + method.md (how to work)
-User prompt:   user_prompt.md (initial task — editable without touching this file)
+System prompt: prompt.md (the campaign, standing across runs) + method.md (how to work)
+User prompt:   user_prompt.md (this run's aim and when it stops -- rewritten each run)
 
 Usage:
     python agent.py

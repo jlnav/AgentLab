@@ -119,8 +119,8 @@ it stands:
 
 | | |
 |---|---|
-| `prompt.md` | their prompt |
-| `user_prompt.md` | what to do first |
+| `prompt.md` | their prompt: the campaign, standing across runs |
+| `user_prompt.md` | the aim of one run, and when it stops; rewritten each run |
 | `task.py` | how one job runs, what it returns, what the agent is told about it |
 | `campaign.json` | which system, and any parameters for it |
 | `run.sh` | settings and launch |

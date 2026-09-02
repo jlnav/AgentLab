@@ -6,8 +6,8 @@ This one is an example. Copy it and replace the contents with your own problem.
 
 | file | what it holds |
 |---|---|
-| `prompt.md` | the goal, what is fixed, what may vary, what counts as an answer, when to stop |
-| `user_prompt.md` | what to do first |
+| `prompt.md` | the campaign: the goal, what is fixed, what may vary, what counts as an answer. Stands across runs |
+| `user_prompt.md` | the aim of one run, and when it stops. Rewritten each run; the agent is given both |
 | `task.py` | how one job runs, what it returns, and what the agent is told about it |
 | `campaign.json` | which system, and any parameters for it |
 
