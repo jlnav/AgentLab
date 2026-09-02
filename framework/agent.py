@@ -140,8 +140,7 @@ MAX_FINALIZE_ROUNDS = 2
 _COMPLETED_TOOL = "get_completed_jobs" if tools.HAS_REMOTE else "get_local_completed"
 CONTINUE_PROMPT = (
     f"One or more jobs have finished. Collect them with {_COMPLETED_TOOL}, "
-    "fit and log each, then continue exploring: pick the next promising region "
-    "from your results and submit it. A good result means probe nearby, not stop."
+    "fit and log each, then continue: submit new jobs as needed."
 )
 EXPLORE_PROMPT = (
     "No jobs are running. Using results.jsonl and your LOGBOOK.md notes, choose "
