@@ -39,7 +39,10 @@ META_session_id=""
 meta_load() {   # run_dir -> cache every field we print, as one call
     local d="$1"
     [ "$META_LOADED_DIR" = "$d" ] && return
-    META_LOADED_DIR="$d"
+    # Cleared first, and the directory recorded only once the read has happened, so a
+    # run whose meta.json cannot be read prints blanks rather than the previous run's.
+    META_status="" META_stop_reason="" META_handle="" META_host="" META_pid=""
+    META_user_prompt_file="" META_session_id=""
     eval "$(python3 -c '
 import json, shlex, sys
 fields = ("status", "stop_reason", "handle", "host", "pid",
@@ -52,6 +55,7 @@ except Exception:
 for k in fields:
     print("META_%s=%s" % (k, shlex.quote(str(meta.get(k, "") or "").replace("\\t", " "))))
 ' "$d/meta.json")"
+    META_LOADED_DIR="$d"
 }
 
 meta_get() {

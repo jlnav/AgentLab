@@ -56,6 +56,15 @@ wanted() {
     python3 ../framework/lab_config.py --services
 }
 
+# The same list, last first: services are stopped in the opposite order to started.
+# Done in the shell because `wanted` is one line of names rather than one per line,
+# and because macOS has no `tac`.
+wanted_reversed() {
+    local out="" s
+    for s in $(wanted); do out="$s${out:+ }$out"; done
+    printf '%s\n' "$out"
+}
+
 # Nothing on is a legitimate answer, but a silent one reads like a broken script.
 if [ -z "$(wanted)" ]; then
     if [ -f "$LAB_DIR/lab.yaml" ]; then
@@ -83,7 +92,7 @@ start)
 stop)
     # Only what this script recorded starting: a pkill would take someone else's
     # python with it, and these are not the only python on the machine.
-    for s in $(wanted | tac); do
+    for s in $(wanted_reversed); do
         pid="$(cat "$RUN_DIR/$s.pid" 2>/dev/null)" || { echo "  $s: not started from here"; continue; }
         if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
             # The launchers run their work in children, so stop the group.
