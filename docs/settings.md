@@ -136,6 +136,27 @@ Less often changed.
 | `CLAIM_STALE_SECONDS` | 21600 | before an unfinished claim can be taken over |
 | `ANNOUNCE_POLL` | 2 | seconds between announcement-board checks while waiting |
 
+### Turn prompts
+
+Each turn the runner nudges the agent with one of five prompts, chosen by what just
+happened. They are deliberately thin -- what a job means, and which records a cycle is
+written up in, belong to the campaign's own prompt, not to the runner. Set any of them
+in `run.sh` to replace the default outright.
+
+| | sent when |
+|---|---|
+| `CONTINUE_PROMPT` | one or more jobs finished |
+| `EXPLORE_PROMPT` | nothing running, nothing submitted last turn, budget left |
+| `WINDDOWN_PROMPT` | the run is ending; in-flight work still to collect |
+| `FINALIZE_PROMPT` | everything collected; the last turn before exit |
+| `REPORT_PROMPT` | a scheduled status post is due |
+
+`EXPLORE_PROMPT` is the one to look at if a run does not stop when it should. It fires
+only when the agent is genuinely idle -- being blocked at capacity does not count, since
+jobs are then in flight. An agent that has finished but did not call `goal_met` is nudged
+`MAX_EMPTY_ROUNDS` (3) times before the runner gives up, and each nudge is a full turn.
+Calling `goal_met` exits immediately instead.
+
 ## Environment — Slack bridge and secretary
 
 One of each per lab, not per campaign. Channels and startable campaigns come from

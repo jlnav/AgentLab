@@ -138,21 +138,33 @@ MAX_FINALIZE_ROUNDS = 2
 # job to complete and nudges the same conversation onward. Remote jobs keep
 # running and are never cancelled by a turn ending.
 _COMPLETED_TOOL = "get_completed_jobs" if tools.HAS_REMOTE else "get_local_completed"
-CONTINUE_PROMPT = (
+
+
+def _prompt(name, default):
+    """Every turn prompt can be replaced from the environment, like the rest of the
+    run's settings. A campaign whose method needs a different nudge says so in its
+    run.sh rather than editing the runner."""
+    v = os.environ.get(name)
+    return v if v else default
+
+
+CONTINUE_PROMPT = _prompt("CONTINUE_PROMPT",
     f"One or more jobs have finished. Collect them with {_COMPLETED_TOOL}, "
     "fit and log each, then continue: submit new jobs as needed."
 )
-EXPLORE_PROMPT = (
-    "No jobs are running. Using results.jsonl and your LOGBOOK.md notes, choose "
-    "the next promising region to probe and submit it. Keep "
-    "exploring -- do not stop because earlier configs finished or did well."
+# What "more work" means belongs to the method, so this says only that the run has
+# capacity and asks for the next step from the records the method already keeps.
+EXPLORE_PROMPT = _prompt("EXPLORE_PROMPT",
+    "No jobs are running and there is budget left. From your own records, decide what "
+    "the next step is and submit it. If the goal is met, or nothing further is worth "
+    "running, say so and stop rather than filling the budget."
 )
-WINDDOWN_PROMPT = (
+WINDDOWN_PROMPT = _prompt("WINDDOWN_PROMPT",
     "Wind-down requested: this run is ending. Submit no new work -- the submit tools "
     "will refuse it. Collect and log the jobs already in flight as they finish. Once "
     "everything is collected you get a final turn to write up the cycle."
 )
-FINALIZE_PROMPT = (
+FINALIZE_PROMPT = _prompt("FINALIZE_PROMPT",
     # Which records a cycle is written up in is the method's business, not the
     # runner's: naming a file here produces one that the method never asked for.
     "All outstanding work is collected and this run is now ending. Close out the "
@@ -194,7 +206,7 @@ NOTIFY_SCRIPT = os.environ.get("NOTIFY_SCRIPT") or os.path.join(SCRIPT_DIR, "sla
 
 # When a periodic summary is due, the runner asks the agent to write it (its own
 # words) via the notify tool, instead of a fixed harness string.
-REPORT_PROMPT = (
+REPORT_PROMPT = _prompt("REPORT_PROMPT",
     "Before anything else this turn, post a brief (1-2 line) status summary to Slack "
     "with the notify tool: what you are currently working on, recent progress, and any "
     "concern. Then continue as normal."
