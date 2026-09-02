@@ -135,6 +135,27 @@ whatever these settings say.
 
 There is no delete operation.
 
+### Collections are not always rooted at `/`
+
+Paths everywhere in this tool are POSIX paths -- the same ones a job sees. Some
+collections agree: NERSC's expose `/global/cfs/...` unchanged. ALCF's do not -- their
+`/` is the filesystem's projects directory, so POSIX `/lus/eagle/projects/foo/bar` is
+`/foo/bar` to the collection.
+
+`globus_collection_root` in `systems/<system>.json` records that prefix, and the tool
+strips it on the way out, so `work_dir` and a job's `log` path can be used as written.
+Empty means the collection uses absolute POSIX paths.
+
+| system | collection | root |
+|---|---|---|
+| perlmutter | NERSC DTN | *(none -- absolute POSIX)* |
+| polaris | alcf#dtn_eagle | `/lus/eagle/projects` |
+| aurora | ALCF Flare | `/lus/flare/projects` |
+
+A user can override it with `collection_root` in their own `globus` block. Getting it
+wrong is visible rather than silent: paths outside the declared root are passed through
+untouched and Globus rejects them.
+
 ### Where job logs are
 
 A job result reports a `log` path on the compute filesystem, under the campaign's

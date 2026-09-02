@@ -1,9 +1,10 @@
 {
   "_comment": "Facts about ALCF Polaris that are the same for everyone. Credentials and allocations go in users/<you>/polaris.json; what to run goes in the campaign.",
-
+  "globus_collection": "05d2c76a-e867-4f67-aa57-76edeb0beda0",
+  "globus_collection_name": "alcf#dtn_eagle",
+  "globus_collection_root": "/lus/eagle/projects",
   "ppn": 1,
   "max_concurrent": 1,
-
   "target": {
     "worker_setup": "module use /soft/modulefiles && module load conda && conda activate",
     "env": {
@@ -15,7 +16,6 @@
       "MPICH_OFI_NIC_POLICY": "NUMA"
     }
   },
-
   "bucket_defaults": {
     "queue": "debug",
     "num_nodes": 1,

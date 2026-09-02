@@ -98,7 +98,7 @@ ENDPOINT_ID = _usr.get("endpoint", "")
 # Globus Transfer is optional: configured per user, and simply absent otherwise. It is
 # how the agent reads files on the compute system when the two do not share a filesystem.
 _transfer.CFG = _transfer.configure(_usr, os.path.join(LAB_DIR, "workspace", CAMPAIGN),
-                                   _CAMPAIGN_DIR)
+                                   _CAMPAIGN_DIR, _sys_cfg)
 HAS_TRANSFER = _transfer.CFG is not None
 # How many jobs may be in flight at once. The system file holds a site default, bounded
 # by queue policy and allocation rather than by the size of the machine; a campaign

@@ -19,8 +19,14 @@ access fact rather than a property of the machine:
       "remote_collection": "<uuid>",     required -- the compute system's collection
       "local_collection":  "<uuid>",     required -- this machine's collection
       "remote_write_root": "<path>",     optional -- defaults to work_dir
-      "remote_read_root":  "<path>"      optional -- unset means read anywhere you can
+      "remote_read_root":  "<path>",     optional -- unset means read anywhere you can
+      "collection_root":   "<path>"      optional -- overrides the system file
     }
+
+Paths are written as POSIX paths throughout -- the same ones the job sees. Where a
+collection is not rooted at the filesystem root, `globus_collection_root` in
+`systems/<system>.json` says what its "/" corresponds to, and paths are translated on
+the way out.
 
 Absent that block the tools are not offered at all, so an installation that does not use
 Globus Transfer sees no sign of it.
@@ -51,10 +57,11 @@ _TAIL_BYTES = 12000
 _WAIT_SECONDS = 600
 
 
-def configure(user_cfg, workspace_dir, campaign_dir=None):
+def configure(user_cfg, workspace_dir, campaign_dir=None, sys_cfg=None):
     """Read the optional `globus` block. Returns None when Transfer is not configured,
     which is what gates the tools out of the server."""
     g = dict(user_cfg.get("globus") or {})
+    sys_cfg = dict(sys_cfg or {})
     remote = str(g.get("remote_collection", "")).strip()
     local = str(g.get("local_collection", "")).strip()
     if not remote or not local or remote.startswith("<") or local.startswith("<"):
@@ -70,6 +77,13 @@ def configure(user_cfg, workspace_dir, campaign_dir=None):
         # Reads are unbounded by default: the usual job is fetching a log from a path
         # the campaign did not choose. Set it to confine reads to one subtree.
         "remote_read_root": str(g.get("remote_read_root") or "").rstrip("/"),
+        # A collection's "/" is not always the filesystem's "/". NERSC's exposes
+        # absolute POSIX paths; ALCF's are rooted at the filesystem's projects
+        # directory, so /lus/eagle/projects/foo/bar is /foo/bar to the collection.
+        # Everything else here is written in POSIX paths and translated on the way out.
+        "collection_root": str(g.get("collection_root")
+                               if g.get("collection_root") is not None
+                               else sys_cfg.get("globus_collection_root", "")).rstrip("/"),
         "workspace_dir": workspace_dir,
         # The agent may send from, and fetch into, either the campaign's own directory
         # (task.py and the scripts a job runs) or its workspace (results and artefacts).
@@ -138,6 +152,21 @@ def _local_dest(rel, roots, must_exist=False):
         if not must_exist or os.path.exists(cand):
             return cand
     return None
+
+
+def _cpath(posix_path):
+    """POSIX path -> the path this collection understands."""
+    root = CFG.get("collection_root") or ""
+    if not root:
+        return posix_path
+    p = os.path.normpath(posix_path)
+    if p == root:
+        return "/"
+    if p.startswith(root + "/"):
+        return p[len(root):]
+    # Already collection-relative, or outside the collection: pass it through and let
+    # Globus reject it, rather than silently rewriting into the wrong place.
+    return posix_path
 
 
 def _remote_is_dir(coll, path):
@@ -217,7 +246,7 @@ async def transfer(args):
     if op == "ls":
         if not path:
             return _err("ls needs `path`.")
-        rc, out, err = _globus("ls", f"{rc_coll}:{path}", timeout=120)
+        rc, out, err = _globus("ls", f"{rc_coll}:{_cpath(path)}", timeout=120)
         if rc != 0:
             return _err(f"ls failed: {err or out}")
         return _ok(out or "(empty directory)")
@@ -235,9 +264,9 @@ async def transfer(args):
         if dest is None:
             return _err("refusing to write outside the campaign and workspace "
                         f"directories: {local_path}")
-        recursive = _remote_is_dir(rc_coll, path)
+        recursive = _remote_is_dir(rc_coll, _cpath(path))
         os.makedirs(dest if recursive else os.path.dirname(dest), exist_ok=True)
-        cmd = ["transfer", f"{rc_coll}:{path}", f"{lc_coll}:{dest}",
+        cmd = ["transfer", f"{rc_coll}:{_cpath(path)}", f"{lc_coll}:{dest}",
                "--label", "agentlab-get", "--format", "json"]
         if recursive:
             cmd.insert(1, "--recursive")
@@ -287,7 +316,7 @@ async def transfer(args):
         if not os.path.exists(src):
             return _err(f"no such local path: {src}")
         recursive = os.path.isdir(src)
-        cmd = ["transfer", f"{lc_coll}:{src}", f"{rc_coll}:{path}",
+        cmd = ["transfer", f"{lc_coll}:{src}", f"{rc_coll}:{_cpath(path)}",
                "--label", "agentlab-put", "--format", "json"]
         if recursive:
             cmd.insert(1, "--recursive")
