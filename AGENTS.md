@@ -262,6 +262,53 @@ Worth doing before a long run.
 Tell them what the stopping conditions are set to, and how to watch and stop it —
 `bin/list_agents.sh --all` and `bin/kill_agent.sh --drain <run_id>`.
 
+### 12. Globus Transfer (optional)
+
+Only worth doing when the agent host and the compute system do **not** share a
+filesystem. It gives the agent a `transfer` tool -- `ls`, `get`, `put` -- for reading and
+writing files on the compute system: scripts and inputs it revises between jobs, and
+whatever the jobs produce. Not offered at all when unconfigured.
+Reference: `docs/globus_transfer.md`.
+
+Do it yourself; the only step that needs them is the browser login. `bin/setup_globus.sh`
+covers the same ground as a script if they would rather run one.
+
+1. **Is it needed?** If `work_dir` from their user file is readable from here, stop --
+   there is nothing to set up.
+2. **CLI and login.** `globus whoami`. If that fails, `pip install globus-cli` and ask
+   them to run `globus login` -- browser, one time.
+3. **This machine.** `globus endpoint search --filter-scope my-endpoints` lists what
+   they own. If nothing there is this host, they need Globus Connect Personal: install
+   it, run `globusconnectpersonal -setup --no-gui`, and start it with `setsid nohup`
+   so it survives the shell. It serves files only while running, and only the paths in
+   `~/.globusonline/lta/config-paths`.
+4. **The compute system.** Read `globus_collection` from `systems/<system>.json`. Do
+   **not** search by name: sites publish a guest collection per project and users
+   publish their own, so a name search returns hundreds of look-alikes. If the field is
+   missing, find the collection once in the Globus web app and add it to the system
+   file, where it is stated once for everyone.
+5. **Consent.** A Globus Connect Server v5 collection needs a one-off `data_access`
+   consent; a Globus Connect Personal collection does not have that scope at all, and
+   asking for one fails with `UNKNOWN_SCOPE_ERROR`. So request it for the compute
+   system's collection only:
+
+   ```
+   globus session consent 'urn:globus:auth:scope:transfer.api.globus.org:all[*https://auth.globus.org/scopes/<remote>/data_access]'
+   ```
+
+6. **Get the path from the user file, not by browsing.** `work_dir` is already
+   recorded there and is the path that matters. Verify that one path resolves:
+   `globus ls <collection>:<work_dir>`. Never list a directory that holds every
+   project on the machine.
+7. **Write it** into `users/<them>/<system>.json` as a `globus` block:
+   `remote_collection`, `local_collection`, `remote_write_root` -- the one subtree `put`
+   may write to, their `work_dir` unless they say otherwise -- and optionally
+   `remote_read_root`. Leave the read root unset unless they ask for it: the usual job is
+   fetching a log from a path the campaign did not choose. Tell them the three bounds and
+   where to change them; the local side is fixed to the campaign workspace.
+8. **Prove it.** `globus ls <remote>:<work_dir>`, then fetch a real file with the
+   `transfer` tool and show them it arrived.
+
 ## Steps that need them at the keyboard
 
 A few steps need them at the keyboard — a password, an MFA passcode, a browser login.

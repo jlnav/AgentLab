@@ -23,6 +23,8 @@ from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor
 from concurrent.futures import wait as _futures_wait
 
 from claude_agent_sdk import tool, create_sdk_mcp_server
+
+import transfer as _transfer
 from globus_compute_sdk import Executor
 from globus_compute_sdk.serialize import ComputeSerializer, AllCodeStrategies
 
@@ -92,6 +94,12 @@ else:
     _usr.setdefault("work_dir", os.path.join(LAB_DIR, "workspace", CAMPAIGN))
 
 ENDPOINT_ID = _usr.get("endpoint", "")
+
+# Globus Transfer is optional: configured per user, and simply absent otherwise. It is
+# how the agent reads files on the compute system when the two do not share a filesystem.
+_transfer.CFG = _transfer.configure(_usr, os.path.join(LAB_DIR, "workspace", CAMPAIGN),
+                                   _CAMPAIGN_DIR)
+HAS_TRANSFER = _transfer.CFG is not None
 # How many jobs may be in flight at once. The system file holds a site default, bounded
 # by queue policy and allocation rather than by the size of the machine; a campaign
 # overrides it, because what is sensible depends on what one job does.
@@ -686,6 +694,8 @@ def create_server():
     tools.append(goal_met)
     if HAS_REMOTE:
         tools.append(check_backend)
+    if HAS_TRANSFER:
+        tools.append(_transfer.transfer)
     return create_sdk_mcp_server(name="cas", version="1.0.0", tools=tools)
 
 
@@ -701,4 +711,6 @@ def tool_names():
     names.append("goal_met")
     if HAS_REMOTE:
         names.append("check_backend")
+    if HAS_TRANSFER:
+        names.append("transfer")
     return [f"mcp__cas__{n}" for n in names]
