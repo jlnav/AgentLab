@@ -267,7 +267,7 @@ async def transfer(args):
         recursive = _remote_is_dir(rc_coll, _cpath(path))
         os.makedirs(dest if recursive else os.path.dirname(dest), exist_ok=True)
         cmd = ["transfer", f"{rc_coll}:{_cpath(path)}", f"{lc_coll}:{dest}",
-               "--label", "agentlab-get", "--format", "json"]
+               "--label", "agentlab-get", "--notify", "off", "--format", "json"]
         if recursive:
             cmd.insert(1, "--recursive")
         rc, out, err = _globus(*cmd, timeout=120)
@@ -317,7 +317,7 @@ async def transfer(args):
             return _err(f"no such local path: {src}")
         recursive = os.path.isdir(src)
         cmd = ["transfer", f"{lc_coll}:{src}", f"{rc_coll}:{_cpath(path)}",
-               "--label", "agentlab-put", "--format", "json"]
+               "--label", "agentlab-put", "--notify", "off", "--format", "json"]
         if recursive:
             cmd.insert(1, "--recursive")
         rc, out, err = _globus(*cmd, timeout=120)
