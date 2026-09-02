@@ -486,6 +486,7 @@ def agent_tools():
 # campaign on a cheaper model before giving a machine to a long run. An alias
 # ('sonnet', 'opus') or a full model name; which ones work depends on the lab's gateway.
 AGENT_MODEL = os.environ.get("AGENT_MODEL", "").strip()
+RESOLVED_MODEL = ""      # what the agent will actually run as; filled in by preflight
 
 
 # One worked example of delegating: a subagent that reads a long record and returns
@@ -757,6 +758,27 @@ def _gateway_settings_file():
     return path
 
 
+def _probe_model():
+    """The model this run will actually use. AGENT_MODEL when a campaign names one;
+    otherwise the CLI's own default, which only the CLI knows -- and which the critic
+    needs, since it picks a family different from the agent's."""
+    if AGENT_MODEL:
+        return AGENT_MODEL
+
+    async def _ask():
+        opts = ClaudeAgentOptions(
+            cwd=SCRIPT_DIR,
+            **({"settings": _gateway_settings_file()} if GATEWAY_URL else {}))
+        async with ClaudeSDKClient(options=opts) as c:
+            return (await _context_usage(c) or {}).get("model")
+
+    try:
+        return asyncio.run(_ask()) or ""
+    except Exception as e:
+        print(f"[model] could not ask the CLI which model it runs ({e})", flush=True)
+        return ""
+
+
 def preflight():
     """Verify everything this run needs BEFORE starting. Fail fast with a clear
     message instead of discovering a missing piece mid-run and spinning."""
@@ -837,9 +859,11 @@ def preflight():
         print(f"gateway: {note}", flush=True)
     # The critic is resolved here rather than at first use: a campaign that needs its
     # cycles reviewed should fail now, not in round twelve.
+    global RESOLVED_MODEL
+    RESOLVED_MODEL = _probe_model()
     try:
         CRITIC_MODEL, CRITIC_LABEL = critic.resolve(
-            AGENT_MODEL or os.environ.get("ANTHROPIC_MODEL", ""))
+            RESOLVED_MODEL or os.environ.get("ANTHROPIC_MODEL", ""))
     except critic.CriticUnavailable as e:
         print(f"preflight FAILED: {e}", flush=True)
         sys.exit(1)
@@ -853,7 +877,7 @@ def preflight():
     claude = [t for t in given if not t.startswith("mcp__")]
     print(f"job tools:    {' '.join(job)}", flush=True)
     print(f"claude tools: {' '.join(claude)}", flush=True)
-    print(f"model:        {AGENT_MODEL or '(Claude Code default)'}", flush=True)
+    print(f"model:        {RESOLVED_MODEL or '(could not be determined)'}", flush=True)
     if not CHECK_ONLY:
         _start_watcher()
 
@@ -984,7 +1008,7 @@ async def main():
             # Before any turn has run: what the prompt, the tools and the memory
             # files already cost, which is where every run starts from.
             start = _as_context(await _context_usage(client))
-            model = (start or {}).get("model") or AGENT_MODEL or "?"
+            model = (start or {}).get("model") or RESOLVED_MODEL or AGENT_MODEL or "?"
             if start:
                 _last_context.update(start)
                 _write_meta(context_tokens=start["tokens"],
