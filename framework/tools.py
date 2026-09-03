@@ -424,7 +424,7 @@ async def submit_job(args):
     if _remote_pending_count() >= MAX_CONCURRENT:
         return {"content": [{"type": "text", "text":
                 f"submit refused: at capacity ({_remote_pending_count()} running/queued, "
-                f"max_concurrent={MAX_CONCURRENT} for this system). Collect a finished job "
+                f"max_concurrent={MAX_CONCURRENT}). Collect a finished job "
                 f"with get_completed_jobs before submitting more."}], "is_error": True}
 
     key = task.job_key(args)

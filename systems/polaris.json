@@ -4,7 +4,6 @@
   "globus_collection_name": "alcf#dtn_eagle",
   "globus_collection_root": "/lus/eagle/projects",
   "ppn": 1,
-  "max_concurrent": 1,
   "target": {
     "worker_setup": "module use /soft/modulefiles && module load conda && conda activate",
     "env": {

@@ -4,7 +4,6 @@
   "globus_collection_name": "NERSC DTN",
   "globus_collection_root": "",
   "ppn": 4,
-  "max_concurrent": 1,
   "target": {
     "env": {
       "TMPDIR": "/tmp"
