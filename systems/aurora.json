@@ -2,7 +2,10 @@
   "_comment": "Aurora. Starting points only \u2014 a campaign overrides anything here that depends on what it runs, in campaign.json. Credentials go in users/<you>/aurora.json.",
   "globus_collection": "f39a7a0f-5bfc-46ce-9615-ba9f8592814f",
   "globus_collection_name": "ALCF Flare",
-  "globus_collection_root": "/lus/flare/projects",
+  "globus_collection_root": [
+    "/flare",
+    "/lus/flare/projects"
+  ],
   "ppn": 1,
   "target": {
     "worker_setup": "module load frameworks",

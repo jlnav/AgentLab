@@ -57,6 +57,10 @@ _TAIL_BYTES = 12000
 _WAIT_SECONDS = 600
 
 
+def _as_list(v):
+    return v if isinstance(v, (list, tuple)) else [v]
+
+
 def configure(user_cfg, workspace_dir, campaign_dir=None, sys_cfg=None):
     """Read the optional `globus` block. Returns None when Transfer is not configured,
     which is what gates the tools out of the server."""
@@ -81,9 +85,12 @@ def configure(user_cfg, workspace_dir, campaign_dir=None, sys_cfg=None):
         # absolute POSIX paths; ALCF's are rooted at the filesystem's projects
         # directory, so /lus/eagle/projects/foo/bar is /foo/bar to the collection.
         # Everything else here is written in POSIX paths and translated on the way out.
-        "collection_root": str(g.get("collection_root")
-                               if g.get("collection_root") is not None
-                               else sys_cfg.get("globus_collection_root", "")).rstrip("/"),
+        # One or several prefixes: the same filesystem is often reachable by a short
+        # mount path and a long one (/flare and /lus/flare/projects), and a work_dir may
+        # be written either way. The first that matches is stripped.
+        "collection_root": [str(r).rstrip("/") for r in _as_list(
+            g.get("collection_root") if g.get("collection_root") is not None
+            else sys_cfg.get("globus_collection_root", "")) if str(r).strip()],
         "workspace_dir": workspace_dir,
         # The agent may send from, and fetch into, either the campaign's own directory
         # (task.py and the scripts a job runs) or its workspace (results and artefacts).
@@ -156,14 +163,12 @@ def _local_dest(rel, roots, must_exist=False):
 
 def _cpath(posix_path):
     """POSIX path -> the path this collection understands."""
-    root = CFG.get("collection_root") or ""
-    if not root:
-        return posix_path
     p = os.path.normpath(posix_path)
-    if p == root:
-        return "/"
-    if p.startswith(root + "/"):
-        return p[len(root):]
+    for root in (CFG.get("collection_root") or []):
+        if p == root:
+            return "/"
+        if p.startswith(root + "/"):
+            return p[len(root):]
     # Already collection-relative, or outside the collection: pass it through and let
     # Globus reject it, rather than silently rewriting into the wrong place.
     return posix_path
