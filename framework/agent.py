@@ -859,7 +859,7 @@ def preflight():
             print(f"  - {pr}", flush=True)
         sys.exit(1)
     backend = "endpoint online" if tools.HAS_REMOTE else "local execution only"
-    print(f"preflight OK: task={tools.TASK_DIR}, method.md, WORKSPACE_DIR, {backend}.", flush=True)
+    print(f"preflight OK: task_dir={tools.TASK_DIR}, method.md, WORKSPACE_DIR, {backend}.", flush=True)
     # The gateway converts between the Messages API and a backend that does not speak
     # it. The agent needs it whenever it is pointed at one, whether or not there is a
     # critic: a run on a non-Anthropic model goes through the same proxy.
@@ -871,14 +871,17 @@ def preflight():
     # The critic is resolved here rather than at first use: a campaign that needs its
     # cycles reviewed should fail now, not in round twelve.
     global RESOLVED_MODEL
-    RESOLVED_MODEL = _probe_model()
+    # Probing costs a whole client start-up, so only do it when the answer is used:
+    # the critic needs it to pick a different family, and a preflight-only check exists
+    # to report it. A real run prints the model as it starts, so it is not needed there.
+    if AGENT_MODEL or CHECK_ONLY or critic.MODEL_SETTING:
+        RESOLVED_MODEL = _probe_model()
     try:
         CRITIC_MODEL, CRITIC_LABEL = critic.resolve(
             RESOLVED_MODEL or os.environ.get("ANTHROPIC_MODEL", ""))
     except critic.CriticUnavailable as e:
         print(f"preflight FAILED: {e}", flush=True)
         sys.exit(1)
-    print(f"critic: {CRITIC_LABEL}", flush=True)
     # The names, not a count: what a campaign is actually given is otherwise only
     # discoverable by reading the framework. Split in two because the halves are
     # decided by different things -- the job tools by what the task defines, the rest
@@ -888,7 +891,32 @@ def preflight():
     claude = [t for t in given if not t.startswith("mcp__")]
     print(f"job tools:    {' '.join(job)}", flush=True)
     print(f"claude tools: {' '.join(claude)}", flush=True)
-    print(f"model:        {RESOLVED_MODEL or '(could not be determined)'}", flush=True)
+    if RESOLVED_MODEL or CHECK_ONLY:
+        print(f"model:        {RESOLVED_MODEL or '(could not be determined)'}", flush=True)
+    print(f"critic:       {CRITIC_LABEL}", flush=True)
+    # The budget and the resources a job asks for. They come from three files and the
+    # environment, so the resolved values are the only honest way to show them -- and
+    # they are what a run gets wrong most often.
+    # Named as the environment variables that set them, so a value that looks wrong
+    # can be searched for in run.sh without a translation step.
+    limits = [f"MAX_SUBMITS={tools.MAX_SUBMITS}",
+              f"MAX_CONCURRENT={tools.MAX_CONCURRENT}"]
+    if MAX_RUNTIME:
+        limits.append(f"MAX_RUNTIME={MAX_RUNTIME}s")
+    print(f"budget:       {', '.join(limits)}", flush=True)
+    if tools.HAS_REMOTE:
+        # One line per bucket. A bucket is a resource shape -- queue, walltime, nodes --
+        # and a system can define several, so they cannot share a line.
+        buckets = tools._SYS["buckets"]
+        for name, b in buckets.items():
+            res = b["user_config"]
+            shown = ", ".join(f"{k}={v}" for k, v in sorted(res.items())
+                              if v != "" and v is not None
+                              and k not in ("init_blocks", "min_blocks"))
+            label = f"resources[{name}]" if len(buckets) > 1 else "resources"
+            marker = "  (default)" if name == tools._default_bucket and len(buckets) > 1 else ""
+            print(f"{label}:    {shown}{marker}", flush=True)
+        print(f"job timeout:  {tools.TARGET.get('timeout', '(unset)')}s", flush=True)
     if not CHECK_ONLY:
         _start_watcher()
 
