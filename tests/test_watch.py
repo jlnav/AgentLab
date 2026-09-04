@@ -23,7 +23,9 @@ def test_status_counts_jobs_and_results(tmp_path, monkeypatch):
     run.mkdir(parents=True)
     (run / "meta.json").write_text(json.dumps({"run_id": "r", "status": "stopped"}))
     ws = tmp_path / "workspace" / "camp"
-    (ws / "jobs.jsonl").write_text('{"event":"submit","run":"r"}\n{"event":"completed","run":"r"}\n')
+    (ws / "jobs.jsonl").write_text(
+        '{"event":"submit","run":"r"}\n{"event":"completed","run":"r"}\n'
+    )
     (ws / "results.jsonl").write_text("one\ntwo\n")
     assert module.status("camp")["jobs_run"] == 1
     assert module.status("camp")["jobs_done"] == 1

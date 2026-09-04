@@ -42,8 +42,11 @@ def test_local_only_needs_no_user_file_and_exposes_local_tools(tools_lab):
     assert not lab.tools.HAS_REMOTE
     assert lab.tools.ENDPOINT_ID == ""
     assert lab.tools.tool_names() == [
-        "mcp__cas__submit_local", "mcp__cas__get_local_completed",
-        "mcp__cas__notify", "mcp__cas__cycle_done", "mcp__cas__goal_met",
+        "mcp__cas__submit_local",
+        "mcp__cas__get_local_completed",
+        "mcp__cas__notify",
+        "mcp__cas__cycle_done",
+        "mcp__cas__goal_met",
     ]
 
 

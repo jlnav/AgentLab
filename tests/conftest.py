@@ -15,10 +15,21 @@ import pytest
 ROOT = Path(__file__).parent.parent
 FRAMEWORK = ROOT / "framework"
 MODULES = (
-    "agent", "critic", "engineer", "secretary", "tools", "transfer",
-    "framework.agent", "framework.critic", "framework.engineer",
-    "framework.secretary", "framework.tools", "framework.transfer",
-    "framework.lab_config", "framework.watch", "framework.slack_to_board",
+    "agent",
+    "critic",
+    "engineer",
+    "secretary",
+    "tools",
+    "transfer",
+    "framework.agent",
+    "framework.critic",
+    "framework.engineer",
+    "framework.secretary",
+    "framework.tools",
+    "framework.transfer",
+    "framework.lab_config",
+    "framework.watch",
+    "framework.slack_to_board",
 )
 
 
@@ -77,10 +88,16 @@ class FakeClaude:
                 self.exit_calls = []
                 self._active_turn = None
                 self._response_read = False
-                self._plan = harness.client_plans.popleft() if harness.client_plans else {
-                    "turns": deque(), "contexts": deque(), "enter_error": None,
-                    "exit_error": None,
-                }
+                self._plan = (
+                    harness.client_plans.popleft()
+                    if harness.client_plans
+                    else {
+                        "turns": deque(),
+                        "contexts": deque(),
+                        "enter_error": None,
+                        "exit_error": None,
+                    }
+                )
                 harness.clients.append(self)
 
             async def __aenter__(self):
@@ -104,7 +121,9 @@ class FakeClaude:
                 if isinstance(expected, str) and prompt != expected:
                     raise AssertionError(f"expected query {expected!r}, got {prompt!r}")
                 if hasattr(expected, "search") and not expected.search(prompt):
-                    raise AssertionError(f"query did not match {expected.pattern!r}: {prompt!r}")
+                    raise AssertionError(
+                        f"query did not match {expected.pattern!r}: {prompt!r}"
+                    )
                 if callable(expected) and not expected(prompt):
                     raise AssertionError(f"query predicate rejected: {prompt!r}")
                 if turn.query_error:
@@ -145,6 +164,7 @@ class FakeClaude:
                 fn._tool_schema = schema
                 harness.tools.append(fn)
                 return fn
+
             return decorate
 
         def create_sdk_mcp_server(**kwargs):
@@ -161,17 +181,30 @@ class FakeClaude:
         self.module.create_sdk_mcp_server = create_sdk_mcp_server
 
     def plan_client(self, *, turns=(), contexts=(), enter_error=None, exit_error=None):
-        self.client_plans.append({
-            "turns": deque(turns),
-            "contexts": deque(contexts),
-            "enter_error": enter_error,
-            "exit_error": exit_error,
-        })
+        self.client_plans.append(
+            {
+                "turns": deque(turns),
+                "contexts": deque(contexts),
+                "enter_error": enter_error,
+                "exit_error": exit_error,
+            }
+        )
 
-    def turn(self, *messages, expected_query=None, query_error=None,
-             stream_error=None, stream_error_after=None):
-        return Turn(list(messages), expected_query, query_error, stream_error,
-                    stream_error_after)
+    def turn(
+        self,
+        *messages,
+        expected_query=None,
+        query_error=None,
+        stream_error=None,
+        stream_error_after=None,
+    ):
+        return Turn(
+            list(messages),
+            expected_query,
+            query_error,
+            stream_error,
+            stream_error_after,
+        )
 
     def text(self, text):
         return types.SimpleNamespace(text=text)
@@ -271,7 +304,11 @@ class FakeGlobus:
 
             def submit(self, fn, args, target):
                 harness.submits.append((self, fn, args, target))
-                plan = harness.submit_plans.popleft() if harness.submit_plans else SubmitPlan("pending")
+                plan = (
+                    harness.submit_plans.popleft()
+                    if harness.submit_plans
+                    else SubmitPlan("pending")
+                )
                 if plan.kind == "raise":
                     raise plan.value
                 task_id = plan.task_id or f"fake-task-{next(harness._task_ids)}"
@@ -304,7 +341,9 @@ class FakeGlobus:
 
             def get_task(self, task_id):
                 harness.task_calls.append(task_id)
-                return harness._resolve(harness.task_statuses.get(task_id, {"status": "running"}), task_id)
+                return harness._resolve(
+                    harness.task_statuses.get(task_id, {"status": "running"}), task_id
+                )
 
         root.Executor = Executor
         root.Client = Client
@@ -391,7 +430,9 @@ def fake_claude_sdk(monkeypatch):
 def fake_globus_sdk(monkeypatch):
     fake = FakeGlobus()
     monkeypatch.setitem(sys.modules, "globus_compute_sdk", fake.module)
-    monkeypatch.setitem(sys.modules, "globus_compute_sdk.serialize", fake.serialize_module)
+    monkeypatch.setitem(
+        sys.modules, "globus_compute_sdk.serialize", fake.serialize_module
+    )
     return fake
 
 
@@ -429,12 +470,19 @@ def tools_lab(tmp_path, monkeypatch, fake_claude_sdk, fake_globus_sdk):
         system_dir.mkdir()
 
         campaign = {
-            "system": "test-system", "max_concurrent": 2, "local_max_concurrent": 2,
+            "system": "test-system",
+            "max_concurrent": 2,
+            "local_max_concurrent": 2,
             "target": {"env": {"CAMPAIGN_ENV": "yes"}},
         }
         system = {
-            "ppn": 4, "target": {"env": {"SYSTEM_ENV": "yes"}},
-            "bucket_defaults": {"queue": "test", "walltime": "00:10:00", "num_nodes": 1},
+            "ppn": 4,
+            "target": {"env": {"SYSTEM_ENV": "yes"}},
+            "bucket_defaults": {
+                "queue": "test",
+                "walltime": "00:10:00",
+                "num_nodes": 1,
+            },
         }
         (campaign_dir / "campaign.json").write_text(json.dumps(campaign))
         (system_dir / "test-system.json").write_text(json.dumps(system))
@@ -444,9 +492,15 @@ def tools_lab(tmp_path, monkeypatch, fake_claude_sdk, fake_globus_sdk):
         if remote:
             user_dir = root / "users" / "test-user"
             user_dir.mkdir(parents=True)
-            (user_dir / "test-system.json").write_text(json.dumps({
-                "endpoint": "test-endpoint", "account": "test-account", "work_dir": "/remote/work",
-            }))
+            (user_dir / "test-system.json").write_text(
+                json.dumps(
+                    {
+                        "endpoint": "test-endpoint",
+                        "account": "test-account",
+                        "work_dir": "/remote/work",
+                    }
+                )
+            )
 
         task_name = f"_agentlab_test_task_{index}"
         task = FakeTask(task_name, remote=remote, local=local, bucket=bucket)
@@ -458,10 +512,18 @@ def tools_lab(tmp_path, monkeypatch, fake_claude_sdk, fake_globus_sdk):
             sys.modules.pop(module_name, None)
         monkeypatch.syspath_prepend(str(FRAMEWORK))
         values = {
-            "LAB_DIR": str(root), "CAMPAIGN": "test-campaign", "CAMPAIGN_DIR": str(campaign_dir),
-            "WORKSPACE_DIR": str(workspace), "USER_NAME": "test-user", "TASK_DIR": str(campaign_dir),
-            "TASK_MODULE": task_name, "MAX_SUBMITS": "10", "MAX_CONCURRENT": "2",
-            "LOCAL_MAX_CONCURRENT": "2", "RUN_ID": "test-run", "NOTIFY_SCRIPT": "",
+            "LAB_DIR": str(root),
+            "CAMPAIGN": "test-campaign",
+            "CAMPAIGN_DIR": str(campaign_dir),
+            "WORKSPACE_DIR": str(workspace),
+            "USER_NAME": "test-user",
+            "TASK_DIR": str(campaign_dir),
+            "TASK_MODULE": task_name,
+            "MAX_SUBMITS": "10",
+            "MAX_CONCURRENT": "2",
+            "LOCAL_MAX_CONCURRENT": "2",
+            "RUN_ID": "test-run",
+            "NOTIFY_SCRIPT": "",
         }
         values.update(env or {})
         for key, value in values.items():

@@ -3,7 +3,9 @@ import importlib
 import sys
 
 
-def test_agent_drain_turn_tracks_delegate_phase_and_session(tools_lab, fake_claude_sdk, monkeypatch, capsys):
+def test_agent_drain_turn_tracks_delegate_phase_and_session(
+    tools_lab, fake_claude_sdk, monkeypatch, capsys
+):
     lab = tools_lab(remote=False, local=True)
     sys.modules.pop("agent", None)
     agent = importlib.import_module("agent")
@@ -12,16 +14,20 @@ def test_agent_drain_turn_tracks_delegate_phase_and_session(tools_lab, fake_clau
     phases = []
     monkeypatch.setattr(agent, "_set_phase", phases.append)
     fake_claude_sdk.plan_client(
-        turns=[fake_claude_sdk.turn(
-            fake_claude_sdk.assistant(
-                fake_claude_sdk.tool_use("Agent", {"subagent_type": "reader"}, "call-1"),
-            ),
-            fake_claude_sdk.assistant(
-                fake_claude_sdk.tool_use("mcp__cas__submit_local"),
-                parent_tool_use_id="call-1",
-            ),
-            fake_claude_sdk.result("success", "agent-session"),
-        )],
+        turns=[
+            fake_claude_sdk.turn(
+                fake_claude_sdk.assistant(
+                    fake_claude_sdk.tool_use(
+                        "Agent", {"subagent_type": "reader"}, "call-1"
+                    ),
+                ),
+                fake_claude_sdk.assistant(
+                    fake_claude_sdk.tool_use("mcp__cas__submit_local"),
+                    parent_tool_use_id="call-1",
+                ),
+                fake_claude_sdk.result("success", "agent-session"),
+            )
+        ],
         contexts=[None],
     )
     client = fake_claude_sdk.module.ClaudeSDKClient(options=object())
