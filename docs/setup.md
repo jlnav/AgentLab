@@ -1,17 +1,28 @@
 # Setup
 
-From a clone to a running agent.
-
-## 1. Install
-
-Python 3.10+, and the `claude` CLI on your PATH and authenticated (`claude --version`).
+From a clone to a running agent. Start with the deterministic setup wizard:
 
 ```
-pip install -r requirements.txt
+bin/setup.py
 ```
 
-The agent runs wherever you start it — a workstation, a login node, a VM. It does not
-run on the compute system.
+It checks Python 3.10+, the authenticated `claude` CLI, and the Python dependencies. It
+can run the local example or scaffold a local or remote campaign, previewing every file
+before it writes. A generated `task.py` contains explicit placeholders and the wizard
+prints a prompt to give an agent for the workload-specific implementation.
+
+Useful non-default modes:
+
+```
+bin/setup.py --check                 # report installation state; change nothing
+bin/setup.py --example               # go directly to the local example
+bin/setup.py --campaign              # scaffold a campaign
+bin/setup.py --campaign --dry-run    # preview without writing
+```
+
+The agent runs wherever you start it — a workstation, a login node, or a VM. It does
+not run on the compute system. The remaining sections document remote endpoint setup,
+which is still a manual handoff from the wizard.
 
 ## 2. Get an endpoint running on the compute system
 

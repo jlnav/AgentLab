@@ -3,7 +3,9 @@
 # files on the compute system -- job logs above all -- when it does not share a
 # filesystem with it. See docs/globus_transfer.md.
 #
-# Run it and answer the prompts:
+# Run it and answer the prompts. This remains the Transfer-specific setup command;
+# bin/setup.py covers installation, examples, and campaign setup, but not this optional
+# advanced integration yet.
 #
 #   bin/setup_globus.sh
 #

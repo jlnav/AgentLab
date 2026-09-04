@@ -57,11 +57,15 @@ workspace/<name>/
 
 ## Getting started
 
-Clone this repository, start your agent in it, and say:
+Clone this repository and run the deterministic setup wizard:
 
-> Help me set up.
+```
+bin/setup.py
+```
 
-It asks which of two you want.
+It checks the installation, previews every file it writes, and asks which of two paths
+you want. If Rich is not installed yet, it offers to install that interface dependency
+before continuing. `bin/setup.py --check` only reports installation state.
 
 **Set up the lab and run the example** — the one to take if you are new. It runs on the
 machine you are already on: no account, no endpoint. It checks the install, gives you
