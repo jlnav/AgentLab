@@ -1315,6 +1315,12 @@ if __name__ == "__main__":
     with open(LOG_PATH, "w") as log_file:
         sys.stdout = Tee(log_file, sys.__stdout__)
         sys.stderr = Tee(log_file, sys.__stderr__)
-        print(f"Logging to {LOG_PATH}", flush=True)
-        preflight()
-        asyncio.run(main())
+        try:
+            print(f"Logging to {LOG_PATH}", flush=True)
+            preflight()
+            asyncio.run(main())
+        finally:
+            # The interpreter flushes sys.stdout and sys.stderr as it exits, which is
+            # after this file has closed. Put the real streams back first: otherwise
+            # that flush fails and a run that finished exits 120.
+            sys.stdout, sys.stderr = sys.__stdout__, sys.__stderr__
