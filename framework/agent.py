@@ -28,6 +28,7 @@ from claude_agent_sdk import (
     AgentDefinition,
     AssistantMessage,
     ResultMessage,
+    SystemMessage,
 )
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 # Resolved and exported BEFORE importing tools: tools.py reads WORKSPACE_DIR at import
@@ -253,14 +254,22 @@ async def _context_usage(client):
 
 
 _context_task = None        # the in-flight context lookup, if any
+_context_tries = 0          # how many times the window has been asked for
+
+# The window is asked for until it is known. A CLI that never answers should not be
+# asked once a round for the length of the run.
+CONTEXT_TRIES = int(os.environ.get("CONTEXT_TRIES", "3"))
 
 
 def _refresh_context(client):
     """Ask for the context figures without making the round wait for them. One lookup
     at a time: while one is running, later rounds go without rather than queue."""
-    global _context_task
+    global _context_task, _context_tries
     if _context_task is not None and not _context_task.done():
         return
+    if _context_tries >= CONTEXT_TRIES:
+        return
+    _context_tries += 1
     _context_task = asyncio.create_task(_record_context(client))
 
 
@@ -283,6 +292,25 @@ def _as_context(usage):
 
 
 _last_context = {}          # tokens/window/pct/model, from the most recent turn
+
+
+def _note_turn_context(usage, model=None):
+    """Record the context figures the turn already carried. The three input counts of
+    the turn's last request sum to what /context reports as totalTokens, so the size of
+    the context is known the moment the turn ends -- no request, no wait. The window is
+    not in a turn, so the percentage waits for the one lookup that reports it."""
+    if model:
+        _last_context["model"] = model
+    if not usage:
+        return
+    tokens = (usage.get("input_tokens", 0) + usage.get("cache_read_input_tokens", 0)
+              + usage.get("cache_creation_input_tokens", 0))
+    if not tokens:
+        return
+    window = _last_context.get("window")
+    pct = 100.0 * tokens / window if window else None
+    _last_context.update(tokens=tokens, pct=pct)
+    _write_meta(context_tokens=tokens, **({"context_pct": pct} if pct is not None else {}))
 
 
 async def _post_scheduled_status(client, round_num, start_time):
@@ -769,10 +797,30 @@ def _gateway_settings_file():
     return path
 
 
+# How long to wait for the CLI to say which model it resolved. It answers in about a
+# second, so this only bounds a start-up that has gone wrong.
+MODEL_PROBE_TIMEOUT = float(os.environ.get("MODEL_PROBE_TIMEOUT", "30"))
+
+
+async def _init_model(client):
+    """The model the CLI resolved for this session, read off the init message it emits
+    at the start of a turn. It carries the resolved name -- `claude-opus-5[1m]` rather
+    than the `opus` a caller may have asked for -- and it arrives before the model is
+    reached, so interrupting on it leaves no request behind."""
+    await client.query("model?")
+    async for m in client.receive_messages():
+        if isinstance(m, SystemMessage) and m.subtype == "init":
+            await client.interrupt()
+            return m.data.get("model") or ""
+        if isinstance(m, ResultMessage):
+            return ""
+    return ""
+
+
 def _probe_model():
     """The model this run will actually use. AGENT_MODEL when a campaign names one;
-    otherwise the CLI's own default, which only the CLI knows -- and which the critic
-    needs, since it picks a family different from the agent's."""
+    otherwise whatever the CLI resolves, which only the CLI knows -- and which the
+    critic needs, since it picks a family different from the agent's."""
     if AGENT_MODEL:
         return AGENT_MODEL
 
@@ -781,7 +829,7 @@ def _probe_model():
             cwd=SCRIPT_DIR,
             **({"settings": _gateway_settings_file()} if GATEWAY_URL else {}))
         async with ClaudeSDKClient(options=opts) as c:
-            return (await _context_usage(c) or {}).get("model")
+            return await asyncio.wait_for(_init_model(c), MODEL_PROBE_TIMEOUT)
 
     try:
         return asyncio.run(_ask()) or ""
@@ -871,11 +919,7 @@ def preflight():
     # The critic is resolved here rather than at first use: a campaign that needs its
     # cycles reviewed should fail now, not in round twelve.
     global RESOLVED_MODEL
-    # Probing costs a whole client start-up, so only do it when the answer is used:
-    # the critic needs it to pick a different family, and a preflight-only check exists
-    # to report it. A real run prints the model as it starts, so it is not needed there.
-    if AGENT_MODEL or CHECK_ONLY or critic.MODEL_SETTING:
-        RESOLVED_MODEL = _probe_model()
+    RESOLVED_MODEL = _probe_model()
     try:
         CRITIC_MODEL, CRITIC_LABEL = critic.resolve(
             RESOLVED_MODEL or os.environ.get("ANTHROPIC_MODEL", ""))
@@ -891,8 +935,7 @@ def preflight():
     claude = [t for t in given if not t.startswith("mcp__")]
     print(f"job tools:    {' '.join(job)}", flush=True)
     print(f"claude tools: {' '.join(claude)}", flush=True)
-    if RESOLVED_MODEL or CHECK_ONLY:
-        print(f"model:        {RESOLVED_MODEL or '(could not be determined)'}", flush=True)
+    print(f"model:        {RESOLVED_MODEL or '(could not be determined)'}", flush=True)
     print(f"critic:       {CRITIC_LABEL}", flush=True)
     # The budget and the resources a job asks for. They come from three files and the
     # environment, so the resolved values are the only honest way to show them -- and
@@ -925,16 +968,27 @@ _session_id = None          # this run's Claude session, for reopening it later
 
 
 async def drain_turn(client, round_num):
-    """Print the assistant's output for one turn (until its ResultMessage), and start
-    a context lookup for the status pane, which the turn does not wait for."""
+    """Print the assistant's output for one turn (until its ResultMessage), and take
+    the status pane's model and context figures off the turn's own messages."""
+    turn_model, turn_usage = None, None
     async for message in client.receive_response():
-        if isinstance(message, AssistantMessage):
+        if isinstance(message, SystemMessage) and message.subtype == "init":
+            # The CLI states the model it resolved at the start of every turn. It is
+            # the same name /context reports, and it costs nothing to read.
+            turn_model = message.data.get("model") or None
+            if turn_model and turn_model != _last_context.get("model"):
+                _write_meta(model=turn_model)
+        elif isinstance(message, AssistantMessage):
             # A subagent's own turns arrive on this stream as well, carrying the id of
             # the Agent call that started them. Name that subagent in the phase, so a
             # watcher sees who is working rather than the agent's own word for whatever
             # tool the subagent happens to be using.
             parent = getattr(message, "parent_tool_use_id", None)
             who = _DELEGATES.get(parent) if parent else None
+            # Each request in the turn reports the context it ran on, and a subagent
+            # reports its own. The agent's last one is the context the turn ends with.
+            if parent is None:
+                turn_usage = message.usage
             for block in message.content:
                 if hasattr(block, "text"):
                     print(block.text, flush=True)
@@ -961,7 +1015,11 @@ async def drain_turn(client, round_num):
                 _session_id = sid
                 _write_meta(session_id=sid, session_cwd=SCRIPT_DIR)
             print(f"\n[round {round_num} turn end] {message.subtype}", flush=True)
-    _refresh_context(client)
+    _note_turn_context(turn_usage, turn_model)
+    # The window is the one figure a turn does not carry. Ask until it is known, then
+    # stop asking: it does not change while the session does.
+    if not _last_context.get("window"):
+        _refresh_context(client)
 
 
 async def main():
@@ -1044,15 +1102,12 @@ async def main():
 
     try:
         async with ClaudeSDKClient(options=options) as client:
-            # Before any turn has run: what the prompt, the tools and the memory
-            # files already cost, which is where every run starts from.
-            start = _as_context(await _context_usage(client))
-            model = (start or {}).get("model") or RESOLVED_MODEL or AGENT_MODEL or "?"
-            if start:
-                _last_context.update(start)
-                _write_meta(context_tokens=start["tokens"],
-                            context_window=start["window"],
-                            context_pct=start["pct"])
+            # What the prompt, the tools and the memory files already cost, which is
+            # where every run starts from. Asked for in the background: the figures are
+            # for the status pane and the run has no reason to wait on them.
+            _refresh_context(client)
+            model = RESOLVED_MODEL or AGENT_MODEL or "?"
+            _last_context["model"] = model
             print(f"Agent started -- {SYSTEM}{ROLE_NOTE} · model {model}", flush=True)
             _write_meta(model=model)
             if NOTIFY_START:
