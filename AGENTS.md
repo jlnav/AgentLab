@@ -129,6 +129,9 @@ it stands:
 `campaigns/example-vllm-inference-opt/` has all of these to copy the shape from, and its
 README says more about each.
 
+`docs/campaigns.md` covers what belongs in each file and what breaks when it goes in the
+wrong one, and how to pick a campaign up again for a later run.
+
 `methods/` holds the starting points for how the agent works. Copy one into the
 campaign as `method.md` — the agent reads the campaign's copy, so every campaign owns
 its own and can be changed without affecting any other:
